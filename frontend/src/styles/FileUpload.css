@@ -1,0 +1,125 @@
+.upload-container {
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  padding: 35px;
+  border-radius: 16px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  text-align: center;
+  color: white;
+  width: 100%;
+  max-width: 400px;
+  margin: 0 auto;
+}
+
+.upload-container h3 {
+  margin-top: 0;
+  margin-bottom: 25px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.form-group {
+  margin-bottom: 20px;
+  text-align: left;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 8px;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.premium-input {
+  width: 100%;
+  padding: 12px 15px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: white;
+  font-size: 15px;
+  transition: all 0.3s ease;
+  box-sizing: border-box;
+}
+
+.premium-input:focus {
+  outline: none;
+  border-color: #3b82f6;
+  background: rgba(0, 0, 0, 0.3);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+}
+
+.premium-input option {
+  background: #1e293b; /* Dark bg for dropdown options */
+  color: white;
+}
+
+.help-text {
+  display: block;
+  margin-top: 6px;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 12px;
+}
+
+.file-upload-wrapper {
+  margin-top: 30px;
+  margin-bottom: 20px;
+}
+
+.upload-label {
+  display: block;
+  background: rgba(255, 255, 255, 0.05);
+  border: 2px dashed rgba(255, 255, 255, 0.2);
+  padding: 30px 20px;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-weight: 600;
+  color: #60a5fa;
+}
+
+.upload-label:hover {
+  background: rgba(59, 130, 246, 0.1);
+  border-color: #3b82f6;
+}
+
+.filename {
+  margin: 15px 0;
+  font-weight: 500;
+  color: #a78bfa;
+  background: rgba(167, 139, 250, 0.1);
+  padding: 8px 12px;
+  border-radius: 6px;
+  display: inline-block;
+  word-break: break-all;
+}
+
+.upload-btn {
+  margin-top: 10px;
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: white;
+  border: none;
+  padding: 14px 28px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 16px;
+  width: 100%;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 15px rgba(16, 185, 129, 0.2);
+}
+
+.upload-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(16, 185, 129, 0.4);
+}
+
+.upload-btn:disabled {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.3);
+  cursor: not-allowed;
+  box-shadow: none;
+}
