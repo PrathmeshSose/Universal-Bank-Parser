@@ -5,6 +5,7 @@ import mongoose from 'mongoose';
 import uploadRoutes from './src/routes/upload.js';
 import exportRoutes from './src/routes/export.js';
 import banksRoutes from './src/routes/banks.js';
+import authRoutes from './src/routes/auth.js';
 import BankTemplate from './src/models/BankTemplate.js';
 
 dotenv.config();
@@ -45,6 +46,7 @@ app.get('/api/health', (req, res) => {
 app.use('/api/upload', uploadRoutes);
 app.use('/api/export', exportRoutes);
 app.use('/api/banks', banksRoutes);
+app.use('/api/auth', authRoutes);
 
 app.listen(PORT, () => {
   console.log(`🚀 Server is running on http://localhost:${PORT}`);
