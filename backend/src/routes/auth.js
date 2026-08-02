@@ -8,30 +8,65 @@ const router = express.Router();
 // @route   POST /api/auth/register
 // @desc    Register a new user
 // @access  Public
+// @route   POST /api/auth/register
+// @desc    Register a new user
+// @access  Public
 router.post('/register', async (req, res) => {
   try {
     const { name, email, password } = req.body;
 
-    // 1. Check if user already exists
-    let user = await User.findOne({ email });
-    if (user) {
-      return res.status(400).json({ error: 'User already exists with this email.' });
-    }
+    let userId = "";
+    let role = "user";
 
-    // 2. Hash the password
+    // Hash the password
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    // 3. Create the user
-    user = new User({
-      name,
-      email,
-      password: hashedPassword,
-      // The first user could be super_admin, but default is 'user'
-      // We will handle admin creation via seed or separate script
-    });
+    // DYNAMIC DATABASE ROUTING
+    if (mongoose.connection.readyState === 1) {
+      // -----------------------------
+      // MONGODB MODE
+      // -----------------------------
+      let user = await User.findOne({ email });
+      if (user) {
+        return res.status(400).json({ error: 'User already exists with this email.' });
+      }
 
-    await user.save();
+      user = new User({ name, email, password: hashedPassword });
+      await user.save();
+      
+      userId = user.id;
+      role = user.role;
+
+    } else {
+      // -----------------------------
+      // SERVERLESS S3 MODE
+      // -----------------------------
+      console.log('⚠️ Using S3 Database for Registration');
+      const { getJsonFromS3, saveJsonToS3 } = await import('../services/s3DatabaseService.js');
+      
+      let users = await getJsonFromS3('users.json');
+      const existingUser = users.find(u => u.email === email);
+      
+      if (existingUser) {
+        return res.status(400).json({ error: 'User already exists with this email (S3 Database).' });
+      }
+
+      const newUser = {
+        id: Date.now().toString(), // Simple unique ID
+        name,
+        email,
+        password: hashedPassword,
+        role: 'user',
+        createdAt: new Date().toISOString()
+      };
+
+      users.push(newUser);
+      await saveJsonToS3('users.json', users);
+      
+      userId = newUser.id;
+      role = newUser.role;
+    }
 
     res.status(201).json({ message: 'User registered successfully!' });
   } catch (error) {
@@ -46,38 +81,67 @@ router.post('/register', async (req, res) => {
 router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
+    let userId = "";
+    let role = "user";
+    let isMatch = false;
 
-    // 1. Check if user exists
-    const user = await User.findOne({ email });
-    if (!user) {
-      return res.status(400).json({ error: 'Invalid credentials.' });
+    // DYNAMIC DATABASE ROUTING
+    if (mongoose.connection.readyState === 1) {
+      // -----------------------------
+      // MONGODB MODE
+      // -----------------------------
+      const user = await User.findOne({ email });
+      if (!user) {
+        return res.status(400).json({ error: 'Invalid credentials.' });
+      }
+
+      isMatch = await bcrypt.compare(password, user.password);
+      if (!isMatch) {
+        return res.status(400).json({ error: 'Invalid credentials.' });
+      }
+
+      userId = user.id;
+      role = user.role;
+    } else {
+      // -----------------------------
+      // SERVERLESS S3 MODE
+      // -----------------------------
+      console.log('⚠️ Using S3 Database for Login');
+      const { getJsonFromS3 } = await import('../services/s3DatabaseService.js');
+      
+      const users = await getJsonFromS3('users.json');
+      const user = users.find(u => u.email === email);
+      
+      if (!user) {
+        return res.status(400).json({ error: 'Invalid credentials (S3 Database).' });
+      }
+
+      isMatch = await bcrypt.compare(password, user.password);
+      if (!isMatch) {
+        return res.status(400).json({ error: 'Invalid credentials (S3 Database).' });
+      }
+
+      userId = user.id;
+      role = user.role;
     }
 
-    // 2. Validate password
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-      return res.status(400).json({ error: 'Invalid credentials.' });
-    }
-
-    // 3. Generate JWT Token
-    // We include the user ID and role in the token payload
+    // Generate JWT Token
     const payload = {
       user: {
-        id: user.id,
-        role: user.role
+        id: userId,
+        role: role
       }
     };
 
-    // Use a secret from .env (fallback for dev if missing)
     const jwtSecret = process.env.JWT_SECRET || 'fallback_secret_key_123';
 
     jwt.sign(
       payload,
       jwtSecret,
-      { expiresIn: '1d' }, // Token valid for 1 day
+      { expiresIn: '1d' },
       (err, token) => {
         if (err) throw err;
-        res.json({ token, user: { id: user.id, name: user.name, role: user.role } });
+        res.json({ token, user: { id: userId, email: email, role: role } });
       }
     );
   } catch (error) {

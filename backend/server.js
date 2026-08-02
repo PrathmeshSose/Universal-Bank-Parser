@@ -18,25 +18,29 @@ app.use(cors());
 app.use(express.json());
 
 // Database Connection & Dummy Seeding
-mongoose.connect(process.env.MONGODB_URI)
-  .then(async () => {
-    console.log('✅ Connected to MongoDB successfully');
-    
-    // Quick script to insert a Dummy Template if the DB is empty (so you don't have to wait for the DB dev!)
-    const count = await BankTemplate.countDocuments();
-    if (count === 0) {
-      await BankTemplate.create({
-        bankName: 'HDFC',
-        documentType: 'Credit Card Statement',
-        extractionRules: {
-          columnsRequired: ['Date', 'Description', 'Debit', 'Credit', 'Balance'],
-          geminiPrompt: 'Extract the transactions from this HDFC bank statement. Ignore the summary headers at the top.'
-        }
-      });
-      console.log('🌱 Dummy HDFC Bank Template injected into MongoDB!');
-    }
-  })
-  .catch((err) => console.error('❌ MongoDB connection error:', err));
+if (process.env.MONGODB_URI) {
+  mongoose.connect(process.env.MONGODB_URI)
+    .then(async () => {
+      console.log('✅ Connected to MongoDB successfully');
+      
+      // Quick script to insert a Dummy Template if the DB is empty (so you don't have to wait for the DB dev!)
+      const count = await BankTemplate.countDocuments();
+      if (count === 0) {
+        await BankTemplate.create({
+          bankName: 'HDFC',
+          documentType: 'Credit Card Statement',
+          extractionRules: {
+            columnsRequired: ['Date', 'Description', 'Debit', 'Credit', 'Balance'],
+            geminiPrompt: 'Extract the transactions from this HDFC bank statement. Ignore the summary headers at the top.'
+          }
+        });
+        console.log('🌱 Dummy HDFC Bank Template injected into MongoDB!');
+      }
+    })
+    .catch((err) => console.error('❌ MongoDB connection error:', err));
+} else {
+  console.warn('⚠️ MONGODB_URI is not defined. Running in Serverless S3 Database mode.');
+}
 
 // Basic Health Check Route
 app.get('/api/health', (req, res) => {

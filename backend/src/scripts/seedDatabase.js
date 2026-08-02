@@ -3,6 +3,8 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import BankTemplate from '../models/BankTemplate.js';
+import User from '../models/User.js';
+import bcrypt from 'bcryptjs';
 
 // Setup paths to find the .env file in the parent directory
 const __filename = fileURLToPath(import.meta.url);
@@ -144,6 +146,26 @@ const runSeed = async () => {
         { upsert: true, new: true }
       );
       console.log(`✅ Successfully injected AI Template for: ${template.bankName}`);
+    }
+
+    // ----------------------------------------------------
+    // SUPER ADMIN GENERATION
+    // ----------------------------------------------------
+    console.log('👤 Checking for Super Admin account...');
+    const adminExists = await User.findOne({ email: 'admin@universalparser.com' });
+    if (!adminExists) {
+      const salt = await bcrypt.genSalt(10);
+      const hashedPassword = await bcrypt.hash('superadmin123', salt);
+      
+      await User.create({
+        name: 'System Admin',
+        email: 'admin@universalparser.com',
+        password: hashedPassword,
+        role: 'super_admin'
+      });
+      console.log('👑 Super Admin account generated successfully!');
+    } else {
+      console.log('✅ Super Admin account already exists.');
     }
 
     console.log('🎉 Database seeding 100% complete!');
