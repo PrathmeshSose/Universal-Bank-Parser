@@ -1,12 +1,10 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import mongoose from 'mongoose';
 import uploadRoutes from './src/routes/upload.js';
 import exportRoutes from './src/routes/export.js';
 import banksRoutes from './src/routes/banks.js';
 import authRoutes from './src/routes/auth.js';
-import BankTemplate from './src/models/BankTemplate.js';
 
 dotenv.config();
 
@@ -17,30 +15,7 @@ const PORT = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json());
 
-// Database Connection & Dummy Seeding
-if (process.env.MONGODB_URI) {
-  mongoose.connect(process.env.MONGODB_URI)
-    .then(async () => {
-      console.log('✅ Connected to MongoDB successfully');
-      
-      // Quick script to insert a Dummy Template if the DB is empty (so you don't have to wait for the DB dev!)
-      const count = await BankTemplate.countDocuments();
-      if (count === 0) {
-        await BankTemplate.create({
-          bankName: 'HDFC',
-          documentType: 'Credit Card Statement',
-          extractionRules: {
-            columnsRequired: ['Date', 'Description', 'Debit', 'Credit', 'Balance'],
-            geminiPrompt: 'Extract the transactions from this HDFC bank statement. Ignore the summary headers at the top.'
-          }
-        });
-        console.log('🌱 Dummy HDFC Bank Template injected into MongoDB!');
-      }
-    })
-    .catch((err) => console.error('❌ MongoDB connection error:', err));
-} else {
-  console.warn('⚠️ MONGODB_URI is not defined. Running in Serverless S3 Database mode.');
-}
+console.log('☁️ Universal Bank Parser API running in Pure AWS S3 Serverless mode.');
 
 // Basic Health Check Route
 app.get('/api/health', (req, res) => {

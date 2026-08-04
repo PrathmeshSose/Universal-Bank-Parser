@@ -32,14 +32,55 @@ export const getJsonFromS3 = async (fileName) => {
     const bodyContents = await streamToString(response.Body);
     return JSON.parse(bodyContents);
   } catch (error) {
-    // If file doesn't exist, return empty array
-    if (error.name === 'NoSuchKey') {
+    // If file doesn't exist, return default templates for templates.json or empty array
+    if (error.name === 'NoSuchKey' || error.Code === 'NoSuchKey') {
+      if (fileName === 'templates.json') {
+        return DEFAULT_BANK_TEMPLATES;
+      }
       return [];
     }
     console.error(`Error reading ${fileName} from S3:`, error);
+    if (fileName === 'templates.json') {
+      return DEFAULT_BANK_TEMPLATES;
+    }
     return [];
   }
 };
+
+const DEFAULT_BANK_TEMPLATES = [
+  {
+    bankName: 'HDFC',
+    documentType: 'Savings & Credit Card Statement',
+    extractionRules: {
+      columnsRequired: ['Date', 'Description', 'Debit', 'Credit', 'Balance'],
+      geminiPrompt: 'Extract transactions from this HDFC bank statement. Ignore summary headers and footers.'
+    }
+  },
+  {
+    bankName: 'SBI',
+    documentType: 'Savings Account Statement',
+    extractionRules: {
+      columnsRequired: ['Date', 'Description', 'Debit', 'Credit', 'Balance'],
+      geminiPrompt: 'Extract transactions from this SBI (State Bank of India) statement. Ignore account summary metadata.'
+    }
+  },
+  {
+    bankName: 'ICICI',
+    documentType: 'Current Account Statement',
+    extractionRules: {
+      columnsRequired: ['Date', 'Description', 'Debit', 'Credit', 'Balance'],
+      geminiPrompt: 'Extract transactions from this ICICI bank statement. Exclude opening and closing balance rows.'
+    }
+  },
+  {
+    bankName: 'Axis',
+    documentType: 'Savings Account Statement',
+    extractionRules: {
+      columnsRequired: ['Date', 'Description', 'Debit', 'Credit', 'Balance'],
+      geminiPrompt: 'Extract transactions from this Axis Bank statement. Ignore footer notes.'
+    }
+  }
+];
 
 /**
  * Saves a JSON array to S3
