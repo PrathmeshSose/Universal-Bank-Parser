@@ -388,76 +388,65 @@ function App() {
      UPLOAD STATEMENT
   ========================================================= */
 
-  const handleUpload = async () => {
-    if (!file) {
-      setError("Please select a bank statement first.");
-      return;
-    }
+const handleUpload = async () => {
+  if (!file) {
+    setError("Please select a bank statement first.");
+    return;
+  }
 
-    setUploading(true);
-    setError("");
-    setMessage("");
+  if (!backendConnected) {
+    setError(
+      "Backend server is offline (http://localhost:5000). Please start the backend to process uploaded statements."
+    );
+    setTransactions([]);
+    return;
+  }
 
-    try {
-      if (backendConnected) {
-        const result = await uploadBankStatementApi(
-          file,
-          selectedBank
-        );
+  setUploading(true);
+  setError("");
+  setMessage("");
 
-        const extracted =
-          result?.transactions ??
-          result?.data?.transactions ??
-          result?.data ??
-          [];
+  try {
+    const result = await uploadBankStatementApi(
+      file,
+      selectedBank
+    );
 
-        const normalized =
-          normalizeTransactions(extracted);
+    const extracted =
+      result?.transactions ??
+      result?.data?.transactions ??
+      result?.data ??
+      [];
 
-        if (normalized.length > 0) {
-          setTransactions(normalized);
+    const normalized =
+      normalizeTransactions(extracted);
 
-          setMessage(
-            `${normalized.length} transaction${normalized.length === 1 ? "" : "s"
-            } extracted successfully.`
-          );
-
-          return;
-        }
-      }
-
-      const demo = getMockSbiTransactions();
-
-      const normalized = normalizeTransactions(demo);
-
+    if (normalized.length > 0) {
       setTransactions(normalized);
 
       setMessage(
-        "Statement loaded successfully. Review the transactions below."
+        `${normalized.length} transaction${
+          normalized.length === 1 ? "" : "s"
+        } extracted successfully.`
       );
-    } catch (err) {
-      console.error("Statement upload failed:", err);
-
-      try {
-        const demo = getMockSbiTransactions();
-
-        const normalized = normalizeTransactions(demo);
-
-        setTransactions(normalized);
-
-        setMessage(
-          "Statement loaded in frontend mode. Review the transactions below."
-        );
-      } catch {
-        setError(
-          err?.message ||
-          "Unable to process the bank statement."
-        );
-      }
-    } finally {
-      setUploading(false);
+    } else {
+      setTransactions([]);
+      setError(
+        "No transactions were extracted from the uploaded statement."
+      );
     }
-  };
+  } catch (err) {
+    console.error("Statement upload failed:", err);
+
+    setTransactions([]);
+    setError(
+      err?.message ||
+      "Unable to process the bank statement."
+    );
+  } finally {
+    setUploading(false);
+  }
+};
 
   /* =========================================================
      DEMO DATA
