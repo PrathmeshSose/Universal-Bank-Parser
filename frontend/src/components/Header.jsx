@@ -1,114 +1,354 @@
-import React from 'react';
-import { ShieldCheck, Server, AlertCircle } from 'lucide-react';
-import { isDemoModeActive } from '../services/api';
+import React from "react";
+import {
+  ShieldCheck,
+  Wifi,
+  LogOut,
+} from "lucide-react";
 
-export const Header = ({ activeTab, setActiveTab, onOpenApiModal }) => {
+function Header({
+  currentUser,
+  onLogout,
+  backendConnected = false,
+}) {
   return (
-    <header className="header-container bg-white border-b border-purple-100 shadow-sm sticky top-0 z-40">
+    <header className="w-full">
 
-      {/* Top Branding & Navigation Bar */}
-      <div className="top-brand-bar px-4 py-2 border-b border-slate-100 flex items-center justify-between bg-slate-900 text-white">
+      {/* =====================================================
+          TOP BAR
+      ===================================================== */}
 
-        {/* Left Section */}
-        <div className="flex items-center gap-3">
+      <div
+        className="
+          flex
+          min-h-[64px]
+          items-center
+          justify-between
+          gap-4
+          border-b
+          border-indigo-900/60
+          bg-gradient-to-r
+          from-[#111936]
+          via-[#171d45]
+          to-[#10152f]
+          px-4
+          text-white
+          shadow-lg
+          md:px-7
+        "
+      >
 
-          {/* Project Logo & Name */}
-          <div className="logo-badge flex items-center gap-2 font-bold text-lg text-purple-300">
-            <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-purple-600 to-indigo-500 flex items-center justify-center text-white font-extrabold text-xs shadow">
+        {/* BRAND */}
+
+        <div className="flex min-w-0 items-center gap-3">
+
+          <div
+            className="
+              flex
+              h-10
+              w-10
+              shrink-0
+              items-center
+              justify-center
+              rounded-xl
+              border
+              border-indigo-300/20
+              bg-gradient-to-br
+              from-indigo-500
+              to-violet-600
+              shadow-lg
+              shadow-indigo-900/40
+            "
+          >
+            <span className="text-[11px] font-black tracking-tight">
               UBP
-            </div>
-
-            <span className="tracking-wider text-white font-outfit text-xl">
-              Universal Bank{' '}
-              <span className="text-xs font-normal bg-purple-900/60 text-purple-200 px-2 py-0.5 rounded border border-purple-700/50 uppercase tracking-widest">
-                Parser
-              </span>
             </span>
           </div>
 
-          <div className="h-5 w-px bg-slate-700 mx-2 hidden md:block" />
+          <div className="min-w-0 leading-none">
 
-          {/* Main Navigation */}
-          <nav className="hidden lg:flex items-center gap-1 text-xs">
-
-            <button
-              onClick={() => setActiveTab('parser')}
-              className={`px-3 py-1.5 rounded-t-md font-medium transition ${
-                activeTab === 'parser'
-                  ? 'bg-purple-700 text-white shadow'
-                  : 'text-slate-300 hover:text-white hover:bg-slate-800'
-              }`}
+            <div
+              className="
+                truncate
+                text-base
+                font-extrabold
+                tracking-tight
+                md:text-xl
+              "
             >
-              📊 Statement Parser
-            </button>
+              Universal Bank Parser
+            </div>
 
-            <button
-              onClick={() => setActiveTab('corporate')}
-              className={`px-3 py-1.5 rounded-t-md font-medium transition ${
-                activeTab === 'corporate'
-                  ? 'bg-purple-700 text-white shadow'
-                  : 'text-slate-300 hover:text-white hover:bg-slate-800'
-              }`}
+            <div
+              className="
+                mt-1
+                hidden
+                text-[9px]
+                font-semibold
+                tracking-[0.22em]
+                text-slate-400
+                sm:block
+              "
             >
-              🏛️ Dashboard
-            </button>
+              FINANCIAL DOCUMENT PROCESSING
+            </div>
 
-          </nav>
-        </div>
-
-        {/* Right Section */}
-        <div className="flex items-center gap-3 text-xs">
-
-          {/* Zero Storage Badge */}
-          <div className="hidden sm:flex items-center gap-1.5 bg-emerald-950/80 text-emerald-300 px-2.5 py-1 rounded-full border border-emerald-800/60 font-medium shadow-inner">
-            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Zero Permanent Storage</span>
           </div>
 
-          {/* Backend Status */}
-          <button
-            onClick={onOpenApiModal}
-            className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1 rounded border border-slate-700 transition"
-          >
-            <Server className="w-3.5 h-3.5 text-purple-400" />
+        </div>
 
-            <span>
-              Backend:{' '}
-              {isDemoModeActive() ? 'Demo Mode' : 'API Connected'}
+
+        {/* =================================================
+            RIGHT SIDE
+        ================================================= */}
+
+        <div className="flex shrink-0 items-center gap-2 md:gap-3">
+
+          {/* BACKEND STATUS */}
+
+          <div
+            className="
+              hidden
+              items-center
+              gap-2
+              rounded-lg
+              border
+              border-indigo-400/20
+              bg-white/5
+              px-3
+              py-2
+              sm:flex
+            "
+          >
+
+            <Wifi
+              className={`h-3.5 w-3.5 ${
+                backendConnected
+                  ? "text-emerald-400"
+                  : "text-amber-400"
+              }`}
+            />
+
+            <span className="text-[10px] font-bold text-slate-300">
+              Backend:
             </span>
 
             <span
-              className={`w-2 h-2 rounded-full ${
-                isDemoModeActive()
-                  ? 'bg-amber-400 animate-pulse'
-                  : 'bg-emerald-400'
+              className={`text-[10px] font-bold ${
+                backendConnected
+                  ? "text-emerald-300"
+                  : "text-amber-300"
               }`}
+            >
+              {backendConnected
+                ? "API Connected"
+                : "API Offline"}
+            </span>
+
+          </div>
+
+
+          {/* ZERO STORAGE */}
+
+          <div
+            className="
+              hidden
+              items-center
+              gap-2
+              rounded-lg
+              border
+              border-emerald-400/20
+              bg-emerald-500/10
+              px-3
+              py-2
+              lg:flex
+            "
+          >
+
+            <span
+              className="
+                h-2
+                w-2
+                rounded-full
+                bg-emerald-400
+                shadow
+                shadow-emerald-400/60
+              "
             />
-          </button>
+
+            <span
+              className="
+                text-[10px]
+                font-bold
+                tracking-wide
+                text-emerald-300
+              "
+            >
+              ZERO PERMANENT STORAGE
+            </span>
+
+          </div>
+
+
+          {/* USER */}
+
+          <div
+            className="
+              hidden
+              items-center
+              gap-2
+              border-l
+              border-white/10
+              pl-3
+              md:flex
+            "
+          >
+
+            <div
+              className="
+                flex
+                h-8
+                w-8
+                items-center
+                justify-center
+                rounded-full
+                bg-indigo-500/20
+                text-[11px]
+                font-black
+                text-indigo-200
+              "
+            >
+              {(currentUser?.name || "U")
+                .charAt(0)
+                .toUpperCase()}
+            </div>
+
+            <div className="max-w-[130px]">
+
+              <p
+                className="
+                  truncate
+                  text-[11px]
+                  font-bold
+                  text-white
+                "
+              >
+                {currentUser?.name || "User"}
+              </p>
+
+              <p
+                className="
+                  truncate
+                  text-[9px]
+                  text-slate-400
+                "
+              >
+                {currentUser?.role || "USER"}
+              </p>
+
+            </div>
+
+          </div>
+
+
+          {/* LOGOUT */}
+
+          {onLogout && (
+            <button
+              type="button"
+              onClick={onLogout}
+              title="Logout"
+              className="
+                inline-flex
+                h-9
+                items-center
+                gap-2
+                rounded-lg
+                border
+                border-white/10
+                bg-white/5
+                px-3
+                text-[10px]
+                font-bold
+                text-slate-300
+                transition
+                hover:bg-red-500/10
+                hover:text-red-300
+              "
+            >
+
+              <LogOut className="h-3.5 w-3.5" />
+
+              <span className="hidden sm:inline">
+                Logout
+              </span>
+
+            </button>
+          )}
 
         </div>
+
       </div>
 
-      {/* Security Notice Banner */}
-      <div className="notice-banner bg-amber-50 border-b border-amber-200/70 px-4 py-1.5 text-xs text-amber-900 flex items-center justify-between">
 
-        <div className="flex items-center gap-2 overflow-hidden">
-          <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+      {/* =====================================================
+          SECURITY NOTICE
+      ===================================================== */}
 
-          <span className="truncate">
-            <strong>Security Notice:</strong>{' '}
-            AI Multimodal Extraction operates strictly in temporary server RAM.
-            No bank statement PDFs or transactional records are retained in any
-            database storage.
+      <div
+        className="
+          flex
+          min-h-[38px]
+          items-center
+          justify-center
+          border-b
+          border-indigo-900/50
+          bg-[#171b38]
+          px-4
+          md:px-7
+        "
+      >
+
+        <div
+          className="
+            flex
+            items-center
+            gap-2
+            text-center
+            text-[9px]
+            text-slate-300
+            sm:text-[10px]
+            md:text-[11px]
+          "
+        >
+
+          <ShieldCheck
+            className="
+              h-3.5
+              w-3.5
+              shrink-0
+              text-emerald-400
+            "
+          />
+
+          <span>
+
+            <strong className="text-slate-200">
+              Security Notice:
+            </strong>{" "}
+
+            AI Multimodal Extraction operates strictly
+            in temporary server RAM. No bank statement
+            PDFs or transactional records are retained
+            in database storage.
+
           </span>
-        </div>
 
-        <span className="text-purple-900 font-semibold cursor-pointer underline hover:text-purple-700 shrink-0 ml-2">
-          Learn More &gt;
-        </span>
+        </div>
 
       </div>
 
     </header>
   );
-};
+}
+
+export default Header;
