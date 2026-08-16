@@ -1,3 +1,4 @@
+
 import { useEffect, useMemo, useState } from "react";
 
 import {
@@ -41,12 +42,7 @@ function App() {
   const [currentUser, setCurrentUser] = useState(() => {
     try {
       const savedUser = localStorage.getItem("ubp_user");
-
-      if (!savedUser) {
-        return null;
-      }
-
-      return JSON.parse(savedUser);
+      return savedUser ? JSON.parse(savedUser) : null;
     } catch (error) {
       console.error("Unable to restore user session:", error);
       return null;
@@ -128,6 +124,7 @@ function App() {
 
   useEffect(() => {
     if (!currentUser) {
+      setBackendConnected(false);
       return undefined;
     }
 
@@ -229,8 +226,18 @@ function App() {
 
     const objectUrl = URL.createObjectURL(selectedFile);
 
+    /*
+      IMPORTANT:
+      Selecting a NEW PDF immediately clears the old table.
+      Therefore old/demo data can never remain attached to
+      the newly selected PDF.
+    */
+
     setFile(selectedFile);
     setPreviewUrl(objectUrl);
+    setTransactions([]);
+    setFilter("all");
+    setSearchTerm("");
     setShowPdf(false);
   };
 
@@ -255,14 +262,12 @@ function App() {
   const handleDragOver = (event) => {
     event.preventDefault();
     event.stopPropagation();
-
     setDragActive(true);
   };
 
   const handleDragLeave = (event) => {
     event.preventDefault();
     event.stopPropagation();
-
     setDragActive(false);
   };
 
@@ -290,9 +295,12 @@ function App() {
 
     setFile(null);
     setPreviewUrl("");
+    setTransactions([]);
     setShowPdf(false);
     setMessage("");
     setError("");
+    setSearchTerm("");
+    setFilter("all");
   };
 
   /* =========================================================
@@ -337,43 +345,51 @@ function App() {
       lineNo:
         item?.lineNo ??
         item?.line ??
+        item?.lineNumber ??
         index + 1,
 
       date:
         item?.date ??
         item?.Date ??
+        item?.transactionDate ??
         "",
 
       description:
         item?.description ??
         item?.Description ??
+        item?.narration ??
+        item?.Narration ??
         "",
 
       prevBalance: numberValue(
         item?.prevBalance ??
-        item?.previousBalance ??
-        item?.["Previous Balance"]
+          item?.previousBalance ??
+          item?.["Previous Balance"] ??
+          item?.openingBalance
       ),
 
       debit: numberValue(
         item?.debit ??
-        item?.Debit ??
-        item?.withdrawal ??
-        item?.Withdrawal
+          item?.Debit ??
+          item?.withdrawal ??
+          item?.Withdrawal ??
+          item?.debitAmount
       ),
 
       credit: numberValue(
         item?.credit ??
-        item?.Credit ??
-        item?.deposit ??
-        item?.Deposit
+          item?.Credit ??
+          item?.deposit ??
+          item?.Deposit ??
+          item?.creditAmount
       ),
 
       currBalance: numberValue(
         item?.currBalance ??
-        item?.currentBalance ??
-        item?.balance ??
-        item?.Balance
+          item?.currentBalance ??
+          item?.balance ??
+          item?.Balance ??
+          item?.closingBalance
       ),
 
       flagged:
@@ -385,7 +401,11 @@ function App() {
   };
 
   /* =========================================================
-     UPLOAD STATEMENT
+     REAL PDF UPLOAD
+     
+     THIS IS THE ONLY FUNCTION THAT PROCESSES A REAL PDF.
+     
+     THERE IS NO DEMO FALLBACK HERE.
   ========================================================= */
 
   const handleUpload = async () => {
@@ -398,62 +418,129 @@ function App() {
     setError("");
     setMessage("");
 
+    /*
+      CRITICAL:
+      Remove all old/demo transactions before starting.
+    */
+
+    setTransactions([]);
+    setSearchTerm("");
+    setFilter("all");
+
+    console.log("========================================");
+    console.log("REAL BANK STATEMENT UPLOAD");
+    console.log("File:", file.name);
+    console.log("Size:", file.size);
+    console.log("Type:", file.type);
+    console.log("Bank:", selectedBank);
+    console.log("Backend connected:", backendConnected);
+    console.log("========================================");
+
     try {
-      if (backendConnected) {
-        const result = await uploadBankStatementApi(
-          file,
-          selectedBank
-        );
+      /*
+        Do NOT use frontend demo data.
 
-        const extracted =
-          result?.transactions ??
-          result?.data?.transactions ??
-          result?.data ??
-          [];
+        Always call the backend.
+      */
 
-        const normalized =
-          normalizeTransactions(extracted);
+      const result = await uploadBankStatementApi(
+        file,
+        selectedBank
+      );
 
-        if (normalized.length > 0) {
-          setTransactions(normalized);
+      console.log("FULL BACKEND RESPONSE:");
+      console.log(result);
 
-          setMessage(
-            `${normalized.length} transaction${normalized.length === 1 ? "" : "s"
-            } extracted successfully.`
-          );
+      /*
+        Support the possible backend response structures.
+      */
 
-          return;
-        }
+      let extracted = [];
+
+      if (Array.isArray(result?.transactions)) {
+        extracted = result.transactions;
+      } else if (
+        Array.isArray(result?.data?.transactions)
+      ) {
+        extracted = result.data.transactions;
+      } else if (Array.isArray(result?.data)) {
+        extracted = result.data;
+      } else if (
+        Array.isArray(result?.result?.transactions)
+      ) {
+        extracted = result.result.transactions;
       }
 
-      const demo = getMockSbiTransactions();
+      console.log(
+        "REAL TRANSACTIONS RETURNED:",
+        extracted.length
+      );
 
-      const normalized = normalizeTransactions(demo);
+      console.table(extracted);
+
+      /*
+        NEVER silently use demo data.
+      */
+
+      if (extracted.length === 0) {
+        throw new Error(
+          "The backend returned 0 transactions for this PDF. Check the backend extraction response."
+        );
+      }
+
+      const normalized =
+        normalizeTransactions(extracted);
+
+      console.log(
+        "NORMALIZED TRANSACTIONS:",
+        normalized.length
+      );
+
+      console.table(normalized);
+
+      if (normalized.length === 0) {
+        throw new Error(
+          "Transactions were returned by the backend but could not be converted for the table."
+        );
+      }
+
+      /*
+        Put ONLY the real PDF data into the table.
+      */
 
       setTransactions(normalized);
 
       setMessage(
-        "Statement loaded successfully. Review the transactions below."
+        `${normalized.length} transaction${
+          normalized.length === 1 ? "" : "s"
+        } extracted successfully from ${file.name}.`
       );
     } catch (err) {
-      console.error("Statement upload failed:", err);
+      console.error(
+        "========================================"
+      );
 
-      try {
-        const demo = getMockSbiTransactions();
+      console.error(
+        "REAL PDF PROCESSING FAILED"
+      );
 
-        const normalized = normalizeTransactions(demo);
+      console.error(err);
 
-        setTransactions(normalized);
+      console.error(
+        "========================================"
+      );
 
-        setMessage(
-          "Statement loaded in frontend mode. Review the transactions below."
-        );
-      } catch {
-        setError(
-          err?.message ||
-          "Unable to process the bank statement."
-        );
-      }
+      /*
+        IMPORTANT:
+        Do NOT load demo data here.
+      */
+
+      setTransactions([]);
+
+      setError(
+        err?.message ||
+          "Unable to process the uploaded bank statement."
+      );
     } finally {
       setUploading(false);
     }
@@ -461,12 +548,14 @@ function App() {
 
   /* =========================================================
      DEMO DATA
+     
+     These functions ONLY run if the user manually clicks
+     "Load Demo" or "Clean Demo".
   ========================================================= */
 
   const loadDemoData = () => {
     try {
       const demo = getMockSbiTransactions();
-
       const normalized = normalizeTransactions(demo);
 
       setTransactions(normalized);
@@ -475,7 +564,7 @@ function App() {
       setError("");
 
       setMessage(
-        "Demo statement loaded. Correct the flagged transactions to test validation."
+        "Demo statement loaded manually."
       );
     } catch (err) {
       console.error("Demo data error:", err);
@@ -539,7 +628,9 @@ function App() {
     setSearchTerm("");
     setError("");
 
-    setMessage("Clean verified demo data loaded.");
+    setMessage(
+      "Clean verified demo data loaded."
+    );
   };
 
   /* =========================================================
@@ -579,6 +670,7 @@ function App() {
     return transactions.map((transaction) => ({
       ...transaction,
       flagged:
+        transaction.flagged ||
         validateTransaction(transaction),
     }));
   }, [transactions]);
@@ -731,7 +823,7 @@ function App() {
   };
 
   /* =========================================================
-     GOOGLE SHEETS EXPORT
+     EXPORT
   ========================================================= */
 
   const handleExport = async ({
@@ -756,24 +848,24 @@ function App() {
           validatedTransactions,
           spreadsheetId || null,
           sheetName ||
-          "Bank_Transactions"
+            "Bank_Transactions"
         );
 
       setMessage(
         result?.message ||
-        "Transactions exported successfully to Google Sheets."
+          "Transactions exported successfully."
       );
 
       setShowExport(false);
     } catch (err) {
       console.error(
-        "Google Sheets export failed:",
+        "Export failed:",
         err
       );
 
       setError(
         err?.message ||
-        "Google Sheets export failed."
+          "Export failed."
       );
 
       throw err;
@@ -840,6 +932,7 @@ function App() {
             setAdminSection(
               section || "users"
             );
+
             setActiveTab("admin");
           }}
         />
@@ -859,7 +952,6 @@ function App() {
             />
           ) : (
             <>
-
               {/* PAGE HEADER */}
 
               <section className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
@@ -887,11 +979,13 @@ function App() {
 
                   <div>
                     <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">
-                      Processing
+                      Backend
                     </p>
 
                     <p className="text-xs font-semibold text-emerald-800">
-                      Temporary RAM only
+                      {backendConnected
+                        ? "Connected"
+                        : "Disconnected"}
                     </p>
                   </div>
 
@@ -904,9 +998,7 @@ function App() {
               {message && (
                 <div className="mb-5 flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
 
-                  <CheckCircle2
-                    size={18}
-                  />
+                  <CheckCircle2 size={18} />
 
                   <span>
                     {message}
@@ -930,9 +1022,7 @@ function App() {
               {error && (
                 <div className="mb-5 flex items-center gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
 
-                  <AlertTriangle
-                    size={18}
-                  />
+                  <AlertTriangle size={18} />
 
                   <span>
                     {error}
@@ -989,6 +1079,10 @@ function App() {
                       <option value="ICICI">
                         ICICI Bank
                       </option>
+
+                      <option value="Axis">
+                        Axis Bank
+                      </option>
                     </select>
 
                   </div>
@@ -1003,16 +1097,15 @@ function App() {
                       handleDragLeave
                     }
                     onDrop={handleDrop}
-                    className={`rounded-2xl border-2 border-dashed p-8 text-center transition md:p-12 ${dragActive
+                    className={`rounded-2xl border-2 border-dashed p-8 text-center transition md:p-12 ${
+                      dragActive
                         ? "border-indigo-500 bg-indigo-50"
                         : "border-slate-200 bg-slate-50 hover:border-indigo-300 hover:bg-indigo-50/40"
-                      }`}
+                    }`}
                   >
 
                     <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-indigo-100 text-indigo-600">
-
                       <Upload size={25} />
-
                     </div>
 
                     <h3 className="mt-4 text-base font-black text-slate-800">
@@ -1096,7 +1189,9 @@ function App() {
                         handleUpload
                       }
                       disabled={
-                        !file || uploading
+                        !file ||
+                        uploading ||
+                        !backendConnected
                       }
                       className="flex items-center gap-2 rounded-xl bg-[#11152a] px-5 py-3 text-xs font-bold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
                     >
@@ -1114,7 +1209,8 @@ function App() {
                       onClick={
                         loadDemoData
                       }
-                      className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs font-bold text-slate-600 transition hover:bg-slate-50"
+                      disabled={uploading}
+                      className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs font-bold text-slate-600 transition hover:bg-slate-50 disabled:opacity-50"
                     >
                       Load Demo
                     </button>
@@ -1124,7 +1220,8 @@ function App() {
                       onClick={
                         loadCleanDemoData
                       }
-                      className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs font-bold text-emerald-700 transition hover:bg-emerald-100"
+                      disabled={uploading}
+                      className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs font-bold text-emerald-700 transition hover:bg-emerald-100 disabled:opacity-50"
                     >
                       Clean Demo
                     </button>
@@ -1153,7 +1250,6 @@ function App() {
               <section className="mt-6 grid gap-4 md:grid-cols-3">
 
                 <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-
                   <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
                     Total Transactions
                   </p>
@@ -1161,11 +1257,9 @@ function App() {
                   <p className="mt-2 text-3xl font-black text-slate-900">
                     {totalTransactions}
                   </p>
-
                 </div>
 
                 <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-5 shadow-sm">
-
                   <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-600">
                     Valid
                   </p>
@@ -1173,11 +1267,9 @@ function App() {
                   <p className="mt-2 text-3xl font-black text-emerald-700">
                     {validTransactions}
                   </p>
-
                 </div>
 
                 <div className="rounded-2xl border border-red-100 bg-red-50 p-5 shadow-sm">
-
                   <p className="text-[10px] font-bold uppercase tracking-wider text-red-600">
                     Flagged
                   </p>
@@ -1185,7 +1277,6 @@ function App() {
                   <p className="mt-2 text-3xl font-black text-red-700">
                     {flaggedTransactions}
                   </p>
-
                 </div>
 
               </section>
@@ -1199,7 +1290,6 @@ function App() {
                   <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
 
                     <div>
-
                       <h2 className="text-lg font-black text-slate-900">
                         Transactions
                       </h2>
@@ -1207,7 +1297,6 @@ function App() {
                       <p className="mt-1 text-xs text-slate-500">
                         Review, edit and validate extracted transactions.
                       </p>
-
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2">
@@ -1226,12 +1315,9 @@ function App() {
                           value={
                             searchTerm
                           }
-                          onChange={(
-                            event
-                          ) =>
+                          onChange={(event) =>
                             setSearchTerm(
-                              event.target
-                                .value
+                              event.target.value
                             )
                           }
                           placeholder="Search transactions..."
@@ -1244,9 +1330,7 @@ function App() {
 
                       <select
                         value={filter}
-                        onChange={(
-                          event
-                        ) =>
+                        onChange={(event) =>
                           setFilter(
                             event.target.value
                           )
@@ -1298,9 +1382,7 @@ function App() {
                         }
                         className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-xs font-bold text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
                       >
-                        <Download
-                          size={15}
-                        />
+                        <Download size={15} />
                         Export
                       </button>
 
@@ -1323,12 +1405,10 @@ function App() {
                 />
 
               </section>
-
             </>
           )}
 
         </main>
-
       </div>
 
       {/* PDF VIEWER */}
@@ -1356,7 +1436,6 @@ function App() {
           onExport={handleExport}
         />
       )}
-
     </div>
   );
 }
