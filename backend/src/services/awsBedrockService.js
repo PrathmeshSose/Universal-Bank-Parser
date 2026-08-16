@@ -15,12 +15,9 @@ async function parsePdf(pdfBuffer, pdfPassword) {
   try {
     const options = {};
     if (pdfPassword && pdfPassword.trim() !== "") {
-      // Create a custom data object to bypass pdf-parse limitations for encrypted files
       options.password = pdfPassword;
     }
     
-    // We pass { data: pdfBuffer, password: pdfPassword } directly into pdfParse
-    // due to the specific workaround we discovered in Phase 1 for encrypted PDFs.
     const pdfData = await pdfParse(pdfPassword ? { data: pdfBuffer, password: pdfPassword } : pdfBuffer, options);
     return pdfData.text;
   } catch (error) {
@@ -70,28 +67,17 @@ CRITICAL INSTRUCTIONS:
 - The very first character of your response must be '[' and the last must be ']'.
 `;
 
-  // Amazon Bedrock payload for Anthropic Claude 3 models
+  // AWS Bedrock payload for Meta Llama 3.3 70B Instruct
   const payload = {
-    anthropic_version: "bedrock-2023-05-31",
-    max_tokens: 4000,
-    temperature: 0.0, // Strict extraction, no creative hallucination
-    messages: [
-      {
-        role: "user",
-        content: [
-          {
-            type: "text",
-            text: prompt
-          }
-        ]
-      }
-    ]
+    prompt: `<|begin_of_text|><|start_header_id|>user<|end_header_id|>\n\n${prompt}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n`,
+    max_gen_len: 2048,
+    temperature: 0.1,
+    top_p: 0.9
   };
 
   try {
     const command = new InvokeModelCommand({
-      // We use Claude 3 Sonnet for a perfect balance of speed, cost, and high intelligence
-      modelId: "anthropic.claude-3-sonnet-20240229-v1:0",
+      modelId: "meta.llama3-3-70b-instruct-v1:0",
       contentType: "application/json",
       accept: "application/json",
       body: JSON.stringify(payload)
@@ -99,23 +85,28 @@ CRITICAL INSTRUCTIONS:
 
     const response = await bedrockClient.send(command);
     
-    // Decode the Uint8Array response back into a string
+    // Decode response
     const responseBody = JSON.parse(new TextDecoder().decode(response.body));
-    const aiResponseText = responseBody.content[0].text.trim();
+    const aiResponseText = (responseBody.generation || "").trim();
 
-    // Parse the JSON array
-    try {
-      const jsonData = JSON.parse(aiResponseText);
-      if (!Array.isArray(jsonData)) {
-         throw new Error("Bedrock did not return a JSON array.");
-      }
-      return jsonData;
-    } catch (parseError) {
-      console.error("JSON Parsing Error from AI Output:", aiResponseText);
-      throw new Error("Failed to parse the AI output into JSON. The AI might have returned malformed data.");
+    // Clean and parse JSON array
+    let cleaned = aiResponseText;
+    if (cleaned.startsWith('```json')) cleaned = cleaned.replace(/^```json/, '').replace(/```$/, '').trim();
+    if (cleaned.startsWith('```')) cleaned = cleaned.replace(/^```/, '').replace(/```$/, '').trim();
+
+    const startIdx = cleaned.indexOf('[');
+    const endIdx = cleaned.lastIndexOf(']');
+    if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
+      cleaned = cleaned.substring(startIdx, endIdx + 1);
     }
+
+    const jsonData = JSON.parse(cleaned);
+    if (!Array.isArray(jsonData)) {
+       throw new Error("Llama 3.3 did not return a valid JSON array.");
+    }
+    return jsonData;
   } catch (error) {
-    console.error("AWS Bedrock Error:", error);
+    console.error("AWS Bedrock Llama 3.3 Error:", error);
     throw new Error(`AWS Bedrock extraction failed: ${error.message}`);
   }
 };
