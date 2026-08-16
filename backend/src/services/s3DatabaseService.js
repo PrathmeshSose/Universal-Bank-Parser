@@ -1,7 +1,7 @@
 import { S3Client, GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
 
-const s3Client = new S3Client({ 
-  region: process.env.AWS_REGION || "us-east-1" 
+const s3Client = new S3Client({
+  region: process.env.AWS_REGION || "us-east-1"
 });
 
 /**
@@ -30,7 +30,17 @@ export const getJsonFromS3 = async (fileName) => {
 
     const response = await s3Client.send(command);
     const bodyContents = await streamToString(response.Body);
-    return JSON.parse(bodyContents);
+    const parsed = JSON.parse(bodyContents);
+
+    // If your friend created an empty templates.json file (either [] or {}), inject the defaults!
+    if (fileName === 'templates.json') {
+      if (!parsed ||
+        (Array.isArray(parsed) && parsed.length === 0) ||
+        (!Array.isArray(parsed) && Object.keys(parsed).length === 0)) {
+        return DEFAULT_BANK_TEMPLATES;
+      }
+    }
+    return parsed;
   } catch (error) {
     // If file doesn't exist, return default templates for templates.json or empty array
     if (error.name === 'NoSuchKey' || error.Code === 'NoSuchKey') {
