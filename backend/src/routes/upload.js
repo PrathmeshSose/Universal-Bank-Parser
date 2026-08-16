@@ -17,7 +17,7 @@ const fileFilter = (req, file, cb) => {
   }
 };
 
-const upload = multer({ 
+const upload = multer({
   storage: storage,
   fileFilter: fileFilter,
   limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit
@@ -53,9 +53,9 @@ router.post('/', authenticate, upload.single('document'), async (req, res) => {
     // 3. AI EXTRACTION: Send to Amazon Bedrock (Claude 3)
     console.log(`🧠 Step 3: AI Extraction via Amazon Bedrock (Claude 3) for ${bankName}`);
     const extractedJson = await extractBankDataWithBedrock(
-      req.file.buffer, 
-      req.file.mimetype, 
-      template.extractionRules.geminiPrompt, 
+      req.file.buffer,
+      req.file.mimetype,
+      template.extractionRules.geminiPrompt,
       pdfPassword
     );
 
