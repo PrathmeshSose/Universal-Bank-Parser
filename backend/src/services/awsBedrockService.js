@@ -1,12 +1,3 @@
-import { PDFParse } from "pdf-parse";
-import {
-  BedrockRuntimeClient,
-  ConverseCommand,
-} from "@aws-sdk/client-bedrock-runtime";
-
-/* =========================================================
-   BEDROCK CLIENT
-========================================================= */
 
 const region =
   process.env.AWS_REGION ||
@@ -15,6 +6,18 @@ const region =
 
 const bedrock = new BedrockRuntimeClient({
   region,
+import { BedrockRuntimeClient, InvokeModelCommand } from "@aws-sdk/client-bedrock-runtime";
+import pdfParse from 'pdf-parse';
+
+// Initialize the Bedrock Runtime Client
+// AWS credentials (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION) 
+// must be set in the .env file or environment variables.
+const bedrockClient = new BedrockRuntimeClient({ 
+  region: process.env.AWS_REGION || "us-east-1",
+  credentials: process.env.AWS_ACCESS_KEY_ID ? {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+  } : undefined
 });
 
 /* =========================================================
@@ -61,15 +64,13 @@ function extractJsonFromResponse(text) {
   }
 
   try {
-    const parsed = JSON.parse(cleaned);
-
-    if (!Array.isArray(parsed)) {
-      throw new Error(
-        "AI response JSON is not an array."
-      );
+    const options = {};
+    if (pdfPassword && pdfPassword.trim() !== "") {
+      options.password = pdfPassword;
     }
-
-    return parsed;
+    
+    const pdfData = await pdfParse(pdfPassword ? { data: pdfBuffer, password: pdfPassword } : pdfBuffer, options);
+    return pdfData.text;
   } catch (error) {
     console.error(
       "Unable to parse AI JSON response:"
@@ -257,16 +258,12 @@ export const extractBankDataWithBedrock =
       "bytes"
     );
 
-    /*
-     * IMPORTANT:
-     *
-     * This extracts text from the ACTUAL uploaded
-     * PDF buffer.
-     *
-     * No demo PDF.
-     * No cached PDF.
-     * No hard-coded transactions.
-     */
+  console.log("🧠 Step 2: Sending parsed text to Amazon Nova Lite (amazon.nova-lite-v1:0)...");
+  
+  // Construct the prompt strictly asking for a JSON array
+  const prompt = `
+You are an expert financial data extractor. I am providing you with the raw text extracted from a bank statement PDF.
+Your task is to extract the transaction rows exactly as requested and return ONLY a valid JSON array.
 
     const pdfText =
       await extractPdfText(
@@ -358,141 +355,53 @@ BANK STATEMENT TEXT:
 ${statementText}
 `;
 
-    console.log("");
-    console.log(
-      "AI extraction prompt prepared."
-    );
-
-    /* =====================================================
-       MODEL
-    ===================================================== */
-
-    const modelId =
-      process.env.AWS_BEDROCK_MODEL_ID ||
-      process.env.BEDROCK_MODEL_ID ||
-      "anthropic.claude-3-haiku-20240307-v1:0";
-
-    console.log(
-      "Bedrock model:",
-      modelId
-    );
-
-    /* =====================================================
-       BEDROCK REQUEST
-    ===================================================== */
-
-    const command =
-      new ConverseCommand({
-        modelId,
-
-        messages: [
-          {
-            role: "user",
-            content: [
-              {
-                text: prompt,
-              },
-            ],
-          },
-        ],
-
-        inferenceConfig: {
-          maxTokens: 12000,
-          temperature: 0,
-        },
-      });
-
-    let response;
-
-    try {
-      response =
-        await bedrock.send(command);
-    } catch (error) {
-      console.error(
-        "BEDROCK REQUEST FAILED:"
-      );
-
-      console.error(error);
-
-      throw new Error(
-        `Bedrock extraction failed: ${
-          error?.message ||
-          "Unknown AWS error"
-        }`
-      );
+  // Amazon Nova Lite payload — uses the "messages" API format
+  const payload = {
+    messages: [
+      {
+        role: "user",
+        content: [{ text: prompt }]
+      }
+    ],
+    inferenceConfig: {
+      maxTokens: 2048,
+      temperature: 0.1,
+      topP: 0.9
     }
-
-    /* =====================================================
-       READ BEDROCK RESPONSE
-    ===================================================== */
-
-    const outputText =
-      response?.output?.message?.content
-        ?.map(
-          (item) => item?.text || ""
-        )
-        .join("")
-        .trim();
-
-    console.log("");
-    console.log(
-      "AI RESPONSE LENGTH:",
-      outputText?.length || 0
-    );
-
-    console.log(
-      "AI RESPONSE PREVIEW:"
-    );
-
-    console.log(
-      outputText?.substring(0, 3000)
-    );
-
-    if (!outputText) {
-      throw new Error(
-        "Bedrock returned an empty extraction response."
-      );
-    }
-
-    /* =====================================================
-       PARSE JSON
-    ===================================================== */
-
-    const transactions =
-      extractJsonFromResponse(
-        outputText
-      );
-
-    console.log("");
-    console.log(
-      "=========================================="
-    );
-
-    console.log(
-      "EXTRACTION COMPLETE"
-    );
-
-    console.log(
-      "TRANSACTIONS:",
-      transactions.length
-    );
-
-    console.log(
-      "=========================================="
-    );
-
-    console.table(
-      transactions
-    );
-
-    if (
-      transactions.length === 0
-    ) {
-      throw new Error(
-        "The AI successfully read the PDF but found zero transactions."
-      );
-    }
-
-    return transactions;
   };
 
+  try {
+    const command = new InvokeModelCommand({
+      modelId: "amazon.nova-lite-v1:0",
+      contentType: "application/json",
+      accept: "application/json",
+      body: JSON.stringify(payload)
+    });
+
+    const response = await bedrockClient.send(command);
+    
+    // Decode response
+    const responseBody = JSON.parse(new TextDecoder().decode(response.body));
+    const aiResponseText = (responseBody.output?.message?.content?.[0]?.text || "").trim();
+
+    // Clean and parse JSON array
+    let cleaned = aiResponseText;
+    if (cleaned.startsWith('```json')) cleaned = cleaned.replace(/^```json/, '').replace(/```$/, '').trim();
+    if (cleaned.startsWith('```')) cleaned = cleaned.replace(/^```/, '').replace(/```$/, '').trim();
+
+    const startIdx = cleaned.indexOf('[');
+    const endIdx = cleaned.lastIndexOf(']');
+    if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
+      cleaned = cleaned.substring(startIdx, endIdx + 1);
+    }
+
+    const jsonData = JSON.parse(cleaned);
+    if (!Array.isArray(jsonData)) {
+       throw new Error("Nova Lite did not return a valid JSON array.");
+    }
+    return jsonData;
+  } catch (error) {
+    console.error("AWS Bedrock Nova Lite Error:", error);
+    throw new Error(`AWS Bedrock extraction failed: ${error.message}`);
+  }
+};

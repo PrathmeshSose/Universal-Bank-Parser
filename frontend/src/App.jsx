@@ -408,143 +408,65 @@ function App() {
      THERE IS NO DEMO FALLBACK HERE.
   ========================================================= */
 
-  const handleUpload = async () => {
-    if (!file) {
-      setError("Please select a bank statement first.");
-      return;
-    }
+const handleUpload = async () => {
+  if (!file) {
+    setError("Please select a bank statement first.");
+    return;
+  }
 
-    setUploading(true);
-    setError("");
-    setMessage("");
-
-    /*
-      CRITICAL:
-      Remove all old/demo transactions before starting.
-    */
-
+  if (!backendConnected) {
+    setError(
+      "Backend server is offline (http://localhost:5000). Please start the backend to process uploaded statements."
+    );
     setTransactions([]);
-    setSearchTerm("");
-    setFilter("all");
+    return;
+  }
 
-    console.log("========================================");
-    console.log("REAL BANK STATEMENT UPLOAD");
-    console.log("File:", file.name);
-    console.log("Size:", file.size);
-    console.log("Type:", file.type);
-    console.log("Bank:", selectedBank);
-    console.log("Backend connected:", backendConnected);
-    console.log("========================================");
+  setUploading(true);
+  setError("");
+  setMessage("");
 
-    try {
-      /*
-        Do NOT use frontend demo data.
+  try {
+    const result = await uploadBankStatementApi(
+      file,
+      selectedBank
+    );
 
-        Always call the backend.
-      */
+    const extracted =
+      result?.transactions ??
+      result?.data?.transactions ??
+      result?.data ??
+      [];
 
-      const result = await uploadBankStatementApi(
-        file,
-        selectedBank
-      );
+    const normalized =
+      normalizeTransactions(extracted);
 
-      console.log("FULL BACKEND RESPONSE:");
-      console.log(result);
-
-      /*
-        Support the possible backend response structures.
-      */
-
-      let extracted = [];
-
-      if (Array.isArray(result?.transactions)) {
-        extracted = result.transactions;
-      } else if (
-        Array.isArray(result?.data?.transactions)
-      ) {
-        extracted = result.data.transactions;
-      } else if (Array.isArray(result?.data)) {
-        extracted = result.data;
-      } else if (
-        Array.isArray(result?.result?.transactions)
-      ) {
-        extracted = result.result.transactions;
-      }
-
-      console.log(
-        "REAL TRANSACTIONS RETURNED:",
-        extracted.length
-      );
-
-      console.table(extracted);
-
-      /*
-        NEVER silently use demo data.
-      */
-
-      if (extracted.length === 0) {
-        throw new Error(
-          "The backend returned 0 transactions for this PDF. Check the backend extraction response."
-        );
-      }
-
-      const normalized =
-        normalizeTransactions(extracted);
-
-      console.log(
-        "NORMALIZED TRANSACTIONS:",
-        normalized.length
-      );
-
-      console.table(normalized);
-
-      if (normalized.length === 0) {
-        throw new Error(
-          "Transactions were returned by the backend but could not be converted for the table."
-        );
-      }
-
-      /*
-        Put ONLY the real PDF data into the table.
-      */
-
+    if (normalized.length > 0) {
       setTransactions(normalized);
 
       setMessage(
         `${normalized.length} transaction${
           normalized.length === 1 ? "" : "s"
-        } extracted successfully from ${file.name}.`
+        } extracted successfully.`
       );
-    } catch (err) {
-      console.error(
-        "========================================"
-      );
-
-      console.error(
-        "REAL PDF PROCESSING FAILED"
-      );
-
-      console.error(err);
-
-      console.error(
-        "========================================"
-      );
-
-      /*
-        IMPORTANT:
-        Do NOT load demo data here.
-      */
-
+    } else {
       setTransactions([]);
-
       setError(
-        err?.message ||
-          "Unable to process the uploaded bank statement."
+        "No transactions were extracted from the uploaded statement."
       );
-    } finally {
-      setUploading(false);
     }
-  };
+  } catch (err) {
+    console.error("Statement upload failed:", err);
+
+    setTransactions([]);
+    setError(
+      err?.message ||
+      "Unable to process the bank statement."
+    );
+  } finally {
+    setUploading(false);
+  }
+};
 
   /* =========================================================
      DEMO DATA

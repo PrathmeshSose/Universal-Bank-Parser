@@ -1,18 +1,9 @@
-import express from "express";
-import multer from "multer";
-
-import {
-  extractBankDataWithBedrock,
-} from "../services/awsBedrockService.js";
-
-import {
-  uploadDataToS3,
-} from "../services/awsS3Service.js";
-
-import {
-  getJsonFromS3,
-  saveJsonToS3,
-} from "../services/s3DatabaseService.js";
+import express from 'express';
+import multer from 'multer';
+import { authenticate } from '../middleware/authMiddleware.js';
+import { extractBankData } from '../services/extractionService.js';
+import { uploadDataToS3 } from '../services/awsS3Service.js';
+import { getJsonFromS3, saveJsonToS3 } from '../services/s3DatabaseService.js';
 
 const router = express.Router();
 
@@ -34,11 +25,9 @@ const fileFilter = (req, file, cb) => {
 };
 
 const upload = multer({
-  storage,
-  fileFilter,
-  limits: {
-    fileSize: 5 * 1024 * 1024,
-  },
+  storage: storage,
+  fileFilter: fileFilter,
+  limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit
 });
 
 /* =========================================================
@@ -74,197 +63,47 @@ router.post(
         req.file.originalname
       );
 
-      console.log(
-        "Size:",
-        req.file.size,
-        "bytes"
-      );
+    // 3. AI EXTRACTION: Bedrock first, auto-fallback to Groq
+    console.log(`🧠 Step 3: Starting AI Extraction for ${bankName}...`);
+    const extractionResult = await extractBankData(
+      req.file.buffer,
+      req.file.mimetype,
+      template.extractionRules.geminiPrompt,
+      pdfPassword
+    );
 
-      console.log(
-        "Type:",
-        req.file.mimetype
-      );
+    const extractedJson = extractionResult.transactions || extractionResult;
+    const aiProvider    = extractionResult.provider || "unknown";
 
-      /* =====================================================
-         BANK
-      ===================================================== */
+    // 4. DATA LAKE STORAGE: Convert JSON to CSV and upload to AWS S3 Bucket
+    console.log(`☁️ Step 4: Archiving CSV to AWS S3 Bucket`);
+    const s3Url = await uploadDataToS3(extractedJson, req.user.id, bankName);
 
-      let bankName = req.body.bankName;
+    // 5. RECORD LOGGING: Append record to S3 database log
+    console.log(`🗄️ Step 5: Logging document record in S3`);
+    let records = await getJsonFromS3('records.json');
+    records.push({
+      id: `rec_${Date.now()}`,
+      userId: req.user.id,
+      bankName: bankName,
+      s3FileUrl: s3Url,
+      aiProvider: aiProvider,
+      uploadDate: new Date().toISOString()
+    });
+    await saveJsonToS3('records.json', records);
 
-      if (!bankName) {
-        return res.status(400).json({
-          status: "error",
-          message:
-            "bankName is required.",
-        });
-      }
+    // 6. Return response to UI
+    res.json({
+      status: 'success',
+      message: 'Document processed and securely archived in AWS S3.',
+      aiProvider: aiProvider,
+      data: extractedJson,
+      downloadUrl: s3Url
+    });
 
-      bankName = bankName.trim();
-
-      console.log(
-        "Bank:",
-        bankName
-      );
-
-      /* =====================================================
-         TEMPLATE
-      ===================================================== */
-
-      const templates =
-        await getJsonFromS3(
-          "templates.json"
-        );
-
-      const template =
-        templates.find(
-          (template) =>
-            template.bankName
-              .toLowerCase() ===
-            bankName.toLowerCase()
-        );
-
-      if (!template) {
-        return res.status(404).json({
-          status: "error",
-          message:
-            `No parsing template found for bank: ${bankName}`,
-        });
-      }
-
-      /* =====================================================
-         PASSWORD
-      ===================================================== */
-
-      const pdfPassword =
-        req.body.password || "";
-
-      /* =====================================================
-         BEDROCK
-      ===================================================== */
-
-      console.log(
-        "STEP 1: Sending PDF to extraction service..."
-      );
-
-      const extractedJson =
-        await extractBankDataWithBedrock(
-          req.file.buffer,
-          req.file.mimetype,
-          template.extractionRules
-            .geminiPrompt,
-          pdfPassword
-        );
-
-      if (
-        !Array.isArray(extractedJson)
-      ) {
-        throw new Error(
-          "AI extraction did not return an array."
-        );
-      }
-
-      console.log(
-        "EXTRACTED TRANSACTIONS:",
-        extractedJson.length
-      );
-
-      /* =====================================================
-         S3 CSV
-      ===================================================== */
-
-      let s3Url = null;
-
-      if (
-        process.env.AWS_S3_BUCKET_NAME
-      ) {
-        console.log(
-          "STEP 2: Uploading extracted CSV to S3..."
-        );
-
-        s3Url =
-          await uploadDataToS3(
-            extractedJson,
-            req.user.id,
-            bankName
-          );
-      } else {
-        console.warn(
-          "AWS_S3_BUCKET_NAME missing. Skipping S3 archive."
-        );
-      }
-
-      /* =====================================================
-         RECORD LOG
-      ===================================================== */
-
-      if (
-        process.env.AWS_S3_BUCKET_NAME
-      ) {
-        const records =
-          await getJsonFromS3(
-            "records.json"
-          );
-
-        records.push({
-          id: `rec_${Date.now()}`,
-          userId: req.user.id,
-          bankName,
-          originalFileName:
-            req.file.originalname,
-          transactionCount:
-            extractedJson.length,
-          s3FileUrl: s3Url,
-          uploadDate:
-            new Date().toISOString(),
-        });
-
-        await saveJsonToS3(
-          "records.json",
-          records
-        );
-      }
-
-      /* =====================================================
-         RESPONSE
-      ===================================================== */
-
-      return res.status(200).json({
-        status: "success",
-        message:
-          `PDF processed successfully. ${extractedJson.length} transactions extracted.`,
-        data: {
-          transactions:
-            extractedJson,
-          bankName,
-          originalFileName:
-            req.file.originalname,
-          transactionCount:
-            extractedJson.length,
-        },
-        transactions:
-          extractedJson,
-        downloadUrl: s3Url,
-      });
-    } catch (error) {
-      console.error("");
-      console.error(
-        "======================================"
-      );
-      console.error(
-        "PDF PROCESSING FAILED"
-      );
-      console.error(
-        "======================================"
-      );
-      console.error(error);
-
-      return res.status(500).json({
-        status: "error",
-        message:
-          error?.message ||
-          "Failed to process PDF.",
-      });
-    }
+  } catch (error) {
+    console.error('Upload Pipeline Error:', error);
+    res.status(500).json({ status: 'error', message: error.message || 'Internal server error.' });
   }
 );
 

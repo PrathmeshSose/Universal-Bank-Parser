@@ -6,13 +6,13 @@
   "type": "module",
   "scripts": {
     "start": "node server.js",
-    "dev": "node --watch server.js"
+    "dev": "nodemon server.js",
+    "seed-s3": "node seedS3.js"
   },
   "dependencies": {
     "@aws-sdk/client-bedrock": "^3.1111.0",
     "@aws-sdk/client-bedrock-runtime": "^3.614.0",
-    "@aws-sdk/client-s3": "^3.614.0",
-    "@aws-sdk/client-sts": "^3.1111.0",
+    "@aws-sdk/client-s3": "^3.1108.0",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
@@ -21,6 +21,8 @@
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.4.1",
     "multer": "^1.4.5-lts.1",
-    "pdf-parse": "^2.2.13"
+    "pdf-parse": "^1.1.1",
+    "pdf-to-img": "^6.2.0",
+    "tesseract.js": "^7.0.0"
   }
 }

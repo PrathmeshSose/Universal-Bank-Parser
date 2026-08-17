@@ -4,12 +4,62 @@ import {
   PutObjectCommand,
 } from "@aws-sdk/client-s3";
 
-const s3Client =
-  new S3Client({
-    region:
-      process.env.AWS_REGION ||
-      "us-east-1",
+const s3Client = new S3Client({
+  region: process.env.AWS_REGION || "us-east-1"
+});
+
+/**
+ * Helper: Converts S3 Stream to String
+ */
+const streamToString = (stream) =>
+  new Promise((resolve, reject) => {
+    const chunks = [];
+    stream.on("data", (chunk) => chunks.push(chunk));
+    stream.on("error", reject);
+    stream.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
   });
+
+/**
+ * Reads a JSON array from S3
+ */
+export const getJsonFromS3 = async (fileName) => {
+  try {
+    const bucketName = process.env.AWS_S3_BUCKET_NAME;
+    if (!bucketName) return [];
+
+    const command = new GetObjectCommand({
+      Bucket: bucketName,
+      Key: `database/${fileName}`
+    });
+
+    const response = await s3Client.send(command);
+    const bodyContents = await streamToString(response.Body);
+    const parsed = JSON.parse(bodyContents);
+
+    // If your friend created an empty templates.json file (either [] or {}), inject the defaults!
+    if (fileName === 'templates.json') {
+      if (!parsed ||
+        (Array.isArray(parsed) && parsed.length === 0) ||
+        (!Array.isArray(parsed) && Object.keys(parsed).length === 0)) {
+        return DEFAULT_BANK_TEMPLATES;
+      }
+    }
+    return parsed;
+  } catch (error) {
+    // If file doesn't exist, return default templates for templates.json or empty array
+    if (error.name === 'NoSuchKey' || error.Code === 'NoSuchKey') {
+      if (fileName === 'templates.json') {
+        return DEFAULT_BANK_TEMPLATES;
+      }
+      return [];
+    }
+    console.error(`Error reading ${fileName} from S3:`, error);
+    if (fileName === 'templates.json') {
+      return DEFAULT_BANK_TEMPLATES;
+    }
+    return [];
+  }
+};
 
 const DEFAULT_BANK_TEMPLATES = [
   {

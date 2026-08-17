@@ -1,13 +1,13 @@
 import express from 'express';
-import BankTemplate from '../models/BankTemplate.js';
+import { getJsonFromS3 } from '../services/s3DatabaseService.js';
 
 const router = express.Router();
 
 // GET /api/banks
-// Returns a list of all supported bank names from the database
+// Returns a list of all supported bank names from S3 database
 router.get('/', async (req, res) => {
   try {
-    const templates = await BankTemplate.find({}, 'bankName').sort({ bankName: 1 });
+    const templates = await getJsonFromS3('templates.json');
     const bankNames = templates.map(t => t.bankName);
     
     res.json({

@@ -18,3 +18,8 @@ frontend/dist/
 # Ignore OS files
 .DS_Store
 Thumbs.db
+
+# Ignore test PDF statements
+*.pdf
+backend/*.pdf
+
