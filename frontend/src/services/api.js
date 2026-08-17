@@ -2,7 +2,7 @@ const TOKEN_KEY = "ubp_token";
 const USER_KEY = "ubp_user";
 
 let API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || "http://localhost:5000";
+  import.meta.env.VITE_API_BASE_URL || "http://localhost:5002";
 
 API_BASE_URL = API_BASE_URL.replace(/\/+$/, "");
 
@@ -119,34 +119,31 @@ export const logoutApi = () => {
 ========================================================= */
 
 export const checkBackendHealthApi = async () => {
-  const controller = new AbortController();
-
-  const timeout = setTimeout(() => {
-    controller.abort();
-  }, 5000);
+  const url = `${API_BASE_URL}/api/health`;
 
   try {
-    const response = await fetch(`${API_BASE_URL}/api/health`, {
+    const response = await fetch(url, {
       method: "GET",
-      signal: controller.signal,
-      cache: "no-store",
+      headers: {
+        Accept: "application/json",
+      },
     });
 
     const data = await response.json().catch(() => ({}));
 
     return {
       connected: response.ok,
-      status: response.status,
       serverData: data,
+      error: response.ok
+        ? null
+        : data?.message || `Backend returned ${response.status}`,
     };
   } catch (error) {
     return {
       connected: false,
-      status: 0,
-      error: error?.message || "Backend unavailable",
+      serverData: null,
+      error: `Cannot connect to backend at ${url}. ${error?.message || ""}`,
     };
-  } finally {
-    clearTimeout(timeout);
   }
 };
 
