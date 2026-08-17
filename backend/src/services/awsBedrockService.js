@@ -5,7 +5,11 @@ import pdfParse from 'pdf-parse';
 // AWS credentials (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION) 
 // must be set in the .env file or environment variables.
 const bedrockClient = new BedrockRuntimeClient({ 
-  region: process.env.AWS_REGION || "us-east-1" 
+  region: process.env.AWS_REGION || "us-east-1",
+  credentials: process.env.AWS_ACCESS_KEY_ID ? {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+  } : undefined
 });
 
 /**
@@ -47,7 +51,7 @@ export const extractBankDataWithBedrock = async (fileBuffer, mimeType, extractio
     throw new Error("Could not extract any text from the PDF. It might be a scanned image without OCR.");
   }
 
-  console.log("🧠 Step 2: Sending parsed text to Amazon Bedrock (Claude 3 Sonnet)...");
+  console.log("🧠 Step 2: Sending parsed text to Amazon Nova Lite (amazon.nova-lite-v1:0)...");
   
   // Construct the prompt strictly asking for a JSON array
   const prompt = `
@@ -67,17 +71,24 @@ CRITICAL INSTRUCTIONS:
 - The very first character of your response must be '[' and the last must be ']'.
 `;
 
-  // AWS Bedrock payload for Meta Llama 3.3 70B Instruct
+  // Amazon Nova Lite payload — uses the "messages" API format
   const payload = {
-    prompt: `<|begin_of_text|><|start_header_id|>user<|end_header_id|>\n\n${prompt}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n`,
-    max_gen_len: 2048,
-    temperature: 0.1,
-    top_p: 0.9
+    messages: [
+      {
+        role: "user",
+        content: [{ text: prompt }]
+      }
+    ],
+    inferenceConfig: {
+      maxTokens: 2048,
+      temperature: 0.1,
+      topP: 0.9
+    }
   };
 
   try {
     const command = new InvokeModelCommand({
-      modelId: "meta.llama3-3-70b-instruct-v1:0",
+      modelId: "amazon.nova-lite-v1:0",
       contentType: "application/json",
       accept: "application/json",
       body: JSON.stringify(payload)
@@ -87,7 +98,7 @@ CRITICAL INSTRUCTIONS:
     
     // Decode response
     const responseBody = JSON.parse(new TextDecoder().decode(response.body));
-    const aiResponseText = (responseBody.generation || "").trim();
+    const aiResponseText = (responseBody.output?.message?.content?.[0]?.text || "").trim();
 
     // Clean and parse JSON array
     let cleaned = aiResponseText;
@@ -102,11 +113,11 @@ CRITICAL INSTRUCTIONS:
 
     const jsonData = JSON.parse(cleaned);
     if (!Array.isArray(jsonData)) {
-       throw new Error("Llama 3.3 did not return a valid JSON array.");
+       throw new Error("Nova Lite did not return a valid JSON array.");
     }
     return jsonData;
   } catch (error) {
-    console.error("AWS Bedrock Llama 3.3 Error:", error);
+    console.error("AWS Bedrock Nova Lite Error:", error);
     throw new Error(`AWS Bedrock extraction failed: ${error.message}`);
   }
 };

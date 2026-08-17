@@ -1,7 +1,7 @@
 import express from 'express';
 import multer from 'multer';
 import { authenticate } from '../middleware/authMiddleware.js';
-import { extractBankDataWithBedrock } from '../services/awsBedrockService.js';
+import { extractBankData } from '../services/extractionService.js';
 import { uploadDataToS3 } from '../services/awsS3Service.js';
 import { getJsonFromS3, saveJsonToS3 } from '../services/s3DatabaseService.js';
 
@@ -50,14 +50,17 @@ router.post('/', authenticate, upload.single('document'), async (req, res) => {
 
     const pdfPassword = req.body.password || "";
 
-    // 3. AI EXTRACTION: Send to Amazon Bedrock (Claude 3)
-    console.log(`🧠 Step 3: AI Extraction via Amazon Bedrock (Claude 3) for ${bankName}`);
-    const extractedJson = await extractBankDataWithBedrock(
+    // 3. AI EXTRACTION: Bedrock first, auto-fallback to Groq
+    console.log(`🧠 Step 3: Starting AI Extraction for ${bankName}...`);
+    const extractionResult = await extractBankData(
       req.file.buffer,
       req.file.mimetype,
       template.extractionRules.geminiPrompt,
       pdfPassword
     );
+
+    const extractedJson = extractionResult.transactions || extractionResult;
+    const aiProvider    = extractionResult.provider || "unknown";
 
     // 4. DATA LAKE STORAGE: Convert JSON to CSV and upload to AWS S3 Bucket
     console.log(`☁️ Step 4: Archiving CSV to AWS S3 Bucket`);
@@ -71,6 +74,7 @@ router.post('/', authenticate, upload.single('document'), async (req, res) => {
       userId: req.user.id,
       bankName: bankName,
       s3FileUrl: s3Url,
+      aiProvider: aiProvider,
       uploadDate: new Date().toISOString()
     });
     await saveJsonToS3('records.json', records);
@@ -79,6 +83,7 @@ router.post('/', authenticate, upload.single('document'), async (req, res) => {
     res.json({
       status: 'success',
       message: 'Document processed and securely archived in AWS S3.',
+      aiProvider: aiProvider,
       data: extractedJson,
       downloadUrl: s3Url
     });
