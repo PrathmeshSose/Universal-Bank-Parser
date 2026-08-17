@@ -147,11 +147,6 @@ No markdown, no extra text.`;
 // ─── Provider 2: Groq (Fallback) ─────────────────────────────────────────────
 
 async function extractWithGroq(pdfText, extractionRulesPrompt) {
-  console.log("┌─────────────────────────────────────────");
-  console.log("│ 🟡 [GROQ] Attempting Groq fallback...");
-  console.log("│    Model: llama-3.3-70b-versatile");
-  console.log("└─────────────────────────────────────────");
-
   if (!process.env.GROQ_API_KEY) {
     throw new Error("GROQ_API_KEY is not set in .env — cannot use Groq fallback.");
   }
@@ -164,24 +159,46 @@ CRITICAL: Return ONLY a JSON object with key "transactions" containing an array.
 Each item MUST have: Date, Description, Debit, Credit, Balance.
 Example: { "transactions": [ { "Date": "01/07/26", "Description": "SALARY", "Debit": "", "Credit": "85000", "Balance": "235000" } ] }`;
 
-  const chatCompletion = await groq.chat.completions.create({
-    messages: [
-      { role: "system", content: "You are a financial data extraction AI. Always output strict JSON only." },
-      { role: "user",   content: `INSTRUCTIONS:\n${enforcedPrompt}\n\nBANK STATEMENT TEXT:\n${pdfText}` }
-    ],
-    model: "llama-3.3-70b-versatile",
-    response_format: { type: "json_object" },
-    temperature: 0,
-    max_tokens: 4096,
-  });
+  const modelsToTry = [
+    "openai/gpt-oss-120b",
+    "qwen/qwen3.6-27b",
+    "groq/compound",
+    "groq/compound-mini",
+    "openai/gpt-oss-20b"
+  ];
 
-  const responseText = chatCompletion.choices[0]?.message?.content;
-  if (!responseText) throw new Error("Groq returned an empty response.");
+  let lastError = null;
 
-  const result = cleanJsonResponse(responseText);
+  for (const modelId of modelsToTry) {
+    console.log("┌─────────────────────────────────────────");
+    console.log(`│ 🟡 [GROQ] Attempting Groq fallback (${modelId})...`);
+    console.log("└─────────────────────────────────────────");
 
-  console.log("✅ [GROQ] SUCCESS — Extraction complete via Groq (Llama 3.3 70B)");
-  return result;
+    try {
+      const chatCompletion = await groq.chat.completions.create({
+        messages: [
+          { role: "system", content: "You are a financial data extraction AI. Always output strict JSON only." },
+          { role: "user",   content: `INSTRUCTIONS:\n${enforcedPrompt}\n\nBANK STATEMENT TEXT:\n${pdfText}` }
+        ],
+        model: modelId,
+        response_format: { type: "json_object" },
+        temperature: 0,
+        max_tokens: 4096,
+      });
+
+      const responseText = chatCompletion.choices[0]?.message?.content;
+      if (!responseText) throw new Error(`Groq model ${modelId} returned an empty response.`);
+
+      const result = cleanJsonResponse(responseText);
+      console.log(`✅ [GROQ] SUCCESS — Extraction complete via Groq (${modelId})`);
+      return result;
+    } catch (err) {
+      console.log(`   ❌ Groq model ${modelId} failed: ${err.message}`);
+      lastError = err;
+    }
+  }
+
+  throw lastError || new Error("All Groq models failed.");
 }
 
 // ─── Main Export: Smart Fallback Extractor ────────────────────────────────────
