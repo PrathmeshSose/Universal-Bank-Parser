@@ -7,13 +7,20 @@ import { getJsonFromS3, saveJsonToS3 } from '../services/s3DatabaseService.js';
 
 const router = express.Router();
 
-// CRITICAL: We use memoryStorage() to enforce the "Zero Storage" rule for raw PDFs in RAM.
+/* =========================================================
+   ZERO DISK STORAGE
+========================================================= */
+
 const storage = multer.memoryStorage();
+
 const fileFilter = (req, file, cb) => {
-  if (file.mimetype === 'application/pdf') {
+  if (file.mimetype === "application/pdf") {
     cb(null, true);
   } else {
-    cb(new Error('Only PDF files are allowed!'), false);
+    cb(
+      new Error("Only PDF files are allowed."),
+      false
+    );
   }
 };
 
@@ -23,32 +30,38 @@ const upload = multer({
   limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit
 });
 
-// POST /api/upload
-// Pure AWS S3 Serverless Endpoint
-router.post('/', authenticate, upload.single('document'), async (req, res) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({ status: 'error', message: 'No valid PDF file uploaded.' });
-    }
+/* =========================================================
+   POST /api/upload
+========================================================= */
 
-    console.log(`✅ Received file: ${req.file.originalname} from User ID: ${req.user.id}`);
+router.post(
+  "/",
+  upload.single("document"),
+  async (req, res) => {
+    try {
+      console.log("");
+      console.log("======================================");
+      console.log("NEW PDF UPLOAD");
+      console.log("======================================");
 
-    // 1. Validate Bank Name
-    let bankName = req.body.bankName;
-    if (!bankName) {
-      return res.status(400).json({ status: 'error', message: 'bankName is required in the request.' });
-    }
-    bankName = bankName.trim();
+      if (!req.file) {
+        return res.status(400).json({
+          status: "error",
+          message:
+            "No PDF file was uploaded.",
+        });
+      }
 
-    // 2. Fetch Bank Template from S3 Database
-    const templates = await getJsonFromS3('templates.json');
-    const template = templates.find(t => t.bankName.toLowerCase() === bankName.toLowerCase());
+      /* LOCAL DEVELOPMENT USER */
 
-    if (!template) {
-      return res.status(404).json({ status: 'error', message: `No parsing template found for bank: ${bankName}` });
-    }
+      req.user = {
+        id: "local-dev-user",
+      };
 
-    const pdfPassword = req.body.password || "";
+      console.log(
+        "File:",
+        req.file.originalname
+      );
 
     // 3. AI EXTRACTION: Bedrock first, auto-fallback to Groq
     console.log(`🧠 Step 3: Starting AI Extraction for ${bankName}...`);
@@ -92,6 +105,6 @@ router.post('/', authenticate, upload.single('document'), async (req, res) => {
     console.error('Upload Pipeline Error:', error);
     res.status(500).json({ status: 'error', message: error.message || 'Internal server error.' });
   }
-});
+);
 
 export default router;
