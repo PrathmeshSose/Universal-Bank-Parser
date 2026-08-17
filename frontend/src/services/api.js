@@ -2,9 +2,8 @@ const TOKEN_KEY = "ubp_token";
 const USER_KEY = "ubp_user";
 
 let API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || "http://localhost:5002";
-
-API_BASE_URL = API_BASE_URL.replace(/\/+$/, "");
+  import.meta.env.VITE_API_BASE_URL ||
+  "http://localhost:5000";
 
 /* =========================================================
    API CONFIG
@@ -53,11 +52,14 @@ export const getCurrentUser = () => {
 ========================================================= */
 
 export const loginApi = async (email, password) => {
-  if (!email?.trim() || !password) {
-    throw new Error("Email and password are required.");
+  if (!email || !password) {
+    throw new Error(
+      "Email and password are required."
+    );
   }
 
-  const normalizedEmail = email.trim().toLowerCase();
+  const normalizedEmail =
+    email.trim().toLowerCase();
 
   const user = {
     id: `local-${Date.now()}`,
@@ -66,9 +68,13 @@ export const loginApi = async (email, password) => {
     role: "USER",
   };
 
+  localStorage.setItem(
+    USER_KEY,
+    JSON.stringify(user)
+  );
+
   const token = `local-token-${Date.now()}`;
 
-  localStorage.setItem(USER_KEY, JSON.stringify(user));
   setAuthToken(token);
 
   return {
@@ -82,9 +88,15 @@ export const loginApi = async (email, password) => {
    REGISTER
 ========================================================= */
 
-export const registerApi = async (name, email, password) => {
-  if (!name?.trim() || !email?.trim() || !password) {
-    throw new Error("Name, email and password are required.");
+export const registerApi = async (
+  name,
+  email,
+  password
+) => {
+  if (!name || !email || !password) {
+    throw new Error(
+      "Name, email and password are required."
+    );
   }
 
   const user = {
@@ -94,9 +106,13 @@ export const registerApi = async (name, email, password) => {
     role: "USER",
   };
 
+  localStorage.setItem(
+    USER_KEY,
+    JSON.stringify(user)
+  );
+
   const token = `local-token-${Date.now()}`;
 
-  localStorage.setItem(USER_KEY, JSON.stringify(user));
   setAuthToken(token);
 
   return {
@@ -119,30 +135,37 @@ export const logoutApi = () => {
 ========================================================= */
 
 export const checkBackendHealthApi = async () => {
-  const url = `${API_BASE_URL}/api/health`;
-
   try {
-    const response = await fetch(url, {
-      method: "GET",
-      headers: {
-        Accept: "application/json",
-      },
-    });
+    const controller = new AbortController();
 
-    const data = await response.json().catch(() => ({}));
+    const timeout = setTimeout(() => {
+      controller.abort();
+    }, 3000);
+
+    const response = await fetch(
+      `${API_BASE_URL}/api/health`,
+      {
+        method: "GET",
+        signal: controller.signal,
+      }
+    );
+
+    clearTimeout(timeout);
+
+    const data = await response
+      .json()
+      .catch(() => ({}));
 
     return {
       connected: response.ok,
       serverData: data,
-      error: response.ok
-        ? null
-        : data?.message || `Backend returned ${response.status}`,
     };
   } catch (error) {
     return {
       connected: false,
-      serverData: null,
-      error: `Cannot connect to backend at ${url}. ${error?.message || ""}`,
+      error:
+        error?.message ||
+        "Backend unavailable",
     };
   }
 };
@@ -152,24 +175,6 @@ export const checkBackendHealthApi = async () => {
 ========================================================= */
 
 export const getBanksApi = async () => {
-  try {
-    const response = await fetch(`${API_BASE_URL}/api/banks`, {
-      method: "GET",
-      cache: "no-store",
-    });
-
-    const data = await response.json().catch(() => ({}));
-
-    if (response.ok && Array.isArray(data?.banks)) {
-      return {
-        success: true,
-        banks: data.banks,
-      };
-    }
-  } catch {
-    // Local fallback
-  }
-
   return {
     success: true,
     banks: [
@@ -194,133 +199,67 @@ export const getBanksApi = async () => {
 };
 
 /* =========================================================
-   UPLOAD BANK STATEMENT
+   UPLOAD
 ========================================================= */
 
 export const uploadBankStatementApi = async (
   file,
-  bankName = "HDFC",
-  password = ""
+  bankName = "HDFC"
 ) => {
   if (!file) {
-    throw new Error("No PDF file selected.");
-  }
-
-  if (!(file instanceof File)) {
-    throw new Error("Invalid PDF file.");
-  }
-
-  if (file.type !== "application/pdf") {
-    throw new Error("Only PDF files are allowed.");
-  }
-
-  if (file.size === 0) {
-    throw new Error("The selected PDF is empty.");
+    throw new Error("No file selected.");
   }
 
   if (file.size > 5 * 1024 * 1024) {
-    throw new Error("File size must be 5 MB or smaller.");
-  }
-
-  if (!bankName?.trim()) {
-    throw new Error("Please select a bank.");
+    throw new Error(
+      "File size must be 5 MB or smaller."
+    );
   }
 
   const formData = new FormData();
 
-  formData.append("document", file, file.name);
-  formData.append("bankName", bankName.trim());
+  formData.append("document", file);
+  formData.append("bankName", bankName);
 
-  if (password) {
-    formData.append("password", password);
-  }
-
-  const token = getAuthToken();
-
-  const headers = {};
-
-  if (token) {
-    headers.Authorization = `Bearer ${token}`;
-  }
-
-  console.log("======================================");
-  console.log("UPLOAD STARTED");
-  console.log("File:", file.name);
-  console.log("Size:", file.size);
-  console.log("Type:", file.type);
-  console.log("Bank:", bankName);
-  console.log("Backend:", API_BASE_URL);
-  console.log("======================================");
-
-  let response;
-
-  try {
-    response = await fetch(`${API_BASE_URL}/api/upload`, {
+  const response = await fetch(
+    `${API_BASE_URL}/api/upload`,
+    {
       method: "POST",
-      headers,
       body: formData,
-      cache: "no-store",
-    });
-  } catch (error) {
-    throw new Error(
-      `Cannot connect to backend at ${API_BASE_URL}. Make sure backend is running.`
-    );
-  }
+    }
+  );
 
-  const rawText = await response.text();
-
-  let result = {};
-
-  try {
-    result = rawText ? JSON.parse(rawText) : {};
-  } catch {
-    throw new Error(
-      `Backend returned invalid JSON (${response.status}).`
-    );
-  }
-
-  console.log("UPLOAD RESPONSE:", result);
+  const result = await response
+    .json()
+    .catch(() => ({}));
 
   if (!response.ok) {
     throw new Error(
       result?.message ||
-        result?.error ||
-        `Upload failed with HTTP ${response.status}.`
-    );
-  }
-
-  if (result?.status !== "success") {
-    throw new Error(
-      result?.message || "Backend did not successfully process the PDF."
+      result?.error ||
+      `Upload failed (${response.status}).`
     );
   }
 
   const transactions =
-    result?.data?.transactions ??
-    result?.transactions ??
-    result?.data ??
+    result?.transactions ||
+    result?.data?.transactions ||
+    result?.data ||
     [];
-
-  if (!Array.isArray(transactions)) {
-    throw new Error(
-      "Backend returned no transaction array."
-    );
-  }
 
   return {
     success: true,
-    status: "success",
-    message:
-      result?.message ||
-      "PDF processed successfully.",
-    data: result?.data,
-    transactions,
-    downloadUrl: result?.downloadUrl || null,
+    ...result,
+    transactions: Array.isArray(
+      transactions
+    )
+      ? transactions
+      : [],
   };
 };
 
 /* =========================================================
-   CSV EXPORT
+   GOOGLE SHEETS / CSV EXPORT
 ========================================================= */
 
 export const exportToGoogleSheetsApi = async (
@@ -329,15 +268,22 @@ export const exportToGoogleSheetsApi = async (
   sheetName = "Bank_Transactions"
 ) => {
   if (!Array.isArray(verifiedTransactions)) {
-    throw new Error("Invalid transaction data.");
+    throw new Error(
+      "Invalid transaction data."
+    );
   }
 
   if (verifiedTransactions.length === 0) {
-    throw new Error("There are no transactions to export.");
+    throw new Error(
+      "There are no transactions to export."
+    );
   }
 
   const escapeCsv = (value) => {
-    if (value === null || value === undefined) {
+    if (
+      value === null ||
+      value === undefined
+    ) {
       return "";
     }
 
@@ -346,10 +292,12 @@ export const exportToGoogleSheetsApi = async (
     if (
       text.includes(",") ||
       text.includes('"') ||
-      text.includes("\n") ||
-      text.includes("\r")
+      text.includes("\n")
     ) {
-      return `"${text.replace(/"/g, '""')}"`;
+      return `"${text.replace(
+        /"/g,
+        '""'
+      )}"`;
     }
 
     return text;
@@ -366,34 +314,54 @@ export const exportToGoogleSheetsApi = async (
     "Line Number",
   ];
 
-  const rows = verifiedTransactions.map((tx, index) => [
-    tx.date || "",
-    tx.description || "",
-    tx.prevBalance ?? "",
-    tx.debit ?? "",
-    tx.credit ?? "",
-    tx.currBalance ?? "",
-    tx.flagged ? "Flagged" : "Valid",
-    tx.lineNo ?? index + 1,
-  ]);
+  const rows =
+    verifiedTransactions.map(
+      (tx, index) => [
+        tx.date || "",
+        tx.description || "",
+        tx.prevBalance ?? 0,
+        tx.debit ?? 0,
+        tx.credit ?? 0,
+        tx.currBalance ?? 0,
+        tx.flagged
+          ? "Flagged"
+          : "Valid",
+        tx.lineNo ??
+        index + 1,
+      ]
+    );
 
-  const csv = [headers, ...rows]
-    .map((row) => row.map(escapeCsv).join(","))
+  const csv = [
+    headers,
+    ...rows,
+  ]
+    .map((row) =>
+      row.map(escapeCsv).join(",")
+    )
     .join("\r\n");
 
-  const blob = new Blob(["\uFEFF" + csv], {
-    type: "text/csv;charset=utf-8;",
-  });
+  const blob = new Blob(
+    ["\uFEFF" + csv],
+    {
+      type: "text/csv;charset=utf-8;",
+    }
+  );
 
-  const url = URL.createObjectURL(blob);
+  const url =
+    URL.createObjectURL(blob);
 
-  const link = document.createElement("a");
+  const link =
+    document.createElement("a");
 
   link.href = url;
-  link.download = `${sheetName || "Bank_Transactions"}.csv`;
+
+  link.download =
+    `${sheetName || "Bank_Transactions"}.csv`;
 
   document.body.appendChild(link);
+
   link.click();
+
   document.body.removeChild(link);
 
   URL.revokeObjectURL(url);
@@ -401,75 +369,81 @@ export const exportToGoogleSheetsApi = async (
   return {
     success: true,
     downloaded: true,
-    message: "Transactions downloaded successfully.",
+    message:
+      "Transactions downloaded successfully.",
   };
 };
 
 /* =========================================================
    DEMO DATA
-   ONLY FOR EXPLICIT DEMO BUTTON.
-   NEVER USED BY REAL PDF UPLOAD.
 ========================================================= */
 
-export const getMockSbiTransactions = () => [
-  {
-    id: "tx-101",
-    lineNo: 1,
-    date: "2026-07-01",
-    description: "NEFT CREDIT - JULY SALARY",
-    prevBalance: 150000,
-    debit: 0,
-    credit: 85000,
-    currBalance: 235000,
-  },
-  {
-    id: "tx-102",
-    lineNo: 2,
-    date: "2026-07-03",
-    description: "ATM CASH WITHDRAWAL",
-    prevBalance: 235000,
-    debit: 10000,
-    credit: 0,
-    currBalance: 225000,
-  },
-  {
-    id: "tx-103",
-    lineNo: 3,
-    date: "2026-07-05",
-    description: "UPI PAYMENT - VENDOR SUPPLIES PVT LTD",
-    prevBalance: 225000,
-    debit: 45250,
-    credit: 0,
-    currBalance: 179750,
-  },
-  {
-    id: "tx-104",
-    lineNo: 4,
-    date: "2026-07-08",
-    description: "CHEQUE PAYMENT - VENDOR INVOICE #948210",
-    prevBalance: 179750,
-    debit: 20000,
-    credit: 0,
-    currBalance: 159750,
-  },
-  {
-    id: "tx-105",
-    lineNo: 5,
-    date: "2026-07-11",
-    description: "RTGS INWARD - DIVIDEND RECEIVED",
-    prevBalance: 159750,
-    debit: 0,
-    credit: 32400,
-    currBalance: 192150,
-  },
-  {
-    id: "tx-106",
-    lineNo: 6,
-    date: "2026-07-14",
-    description: "BILL PAYMENT - ELECTRICITY CHARGES",
-    prevBalance: 192150,
-    debit: 4150,
-    credit: 0,
-    currBalance: 188000,
-  },
-];
+export const getMockSbiTransactions =
+  () => [
+    {
+      id: "tx-101",
+      lineNo: 1,
+      date: "2026-07-01",
+      description:
+        "NEFT CREDIT - JULY SALARY",
+      prevBalance: 150000,
+      debit: 0,
+      credit: 85000,
+      currBalance: 235000,
+    },
+    {
+      id: "tx-102",
+      lineNo: 2,
+      date: "2026-07-03",
+      description:
+        "ATM CASH WITHDRAWAL",
+      prevBalance: 235000,
+      debit: 10000,
+      credit: 0,
+      currBalance: 225000,
+    },
+    {
+      id: "tx-103",
+      lineNo: 3,
+      date: "2026-07-05",
+      description:
+        "UPI PAYMENT - VENDOR SUPPLIES PVT LTD",
+      prevBalance: 225000,
+      debit: 45250,
+      credit: 0,
+      currBalance: 184750,
+    },
+    {
+      id: "tx-104",
+      lineNo: 4,
+      date: "2026-07-08",
+      description:
+        "CHEQUE PAYMENT - VENDOR INVOICE #948210",
+      prevBalance: 179750,
+      debit: 20000,
+      credit: 0,
+      currBalance: 159750,
+    },
+    {
+      id: "tx-105",
+      lineNo: 5,
+      date: "2026-07-11",
+      description:
+        "RTGS INWARD - DIVIDEND RECEIVED",
+      prevBalance: 159750,
+      debit: 0,
+      credit: 32400,
+      currBalance: 195000,
+    },
+    {
+      id: "tx-106",
+      lineNo: 6,
+      date: "2026-07-14",
+      description:
+        "BILL PAYMENT - ELECTRICITY CHARGES",
+      prevBalance: 192150,
+      debit: 4150,
+      credit: 0,
+      currBalance: 188000,
+    },
+  ];
