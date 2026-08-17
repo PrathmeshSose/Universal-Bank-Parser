@@ -25,17 +25,53 @@ const bedrockClient = new BedrockRuntimeClient({
 // ─── PDF Parser ───────────────────────────────────────────────────────────────
 
 async function parsePdf(fileBuffer, pdfPassword) {
+  let pdfText = '';
   try {
     const pdfConfig = pdfPassword ? { data: fileBuffer, password: pdfPassword } : fileBuffer;
     const pdfData = await pdfParse(pdfConfig);
-    return pdfData.text;
+    pdfText = (pdfData.text || '').trim();
   } catch (error) {
     if (error.message.includes('No password given')) {
       throw new Error('This PDF is password protected! Please enter the password.');
     } else if (error.message.includes('Incorrect Password')) {
       throw new Error('Incorrect PDF password. Please try again.');
     }
-    throw new Error(`Failed to parse PDF: ${error.message}`);
+    console.log(`⚠️ Text extraction warning: ${error.message}`);
+  }
+
+  // If text extraction yielded enough text, return it
+  if (pdfText.length > 50) {
+    return pdfText;
+  }
+
+  // Otherwise, fallback to OCR (scanned PDF)
+  console.log("⚠️ Very little text found via standard parser. Attempting OCR (Tesseract.js)...");
+  try {
+    const { pdf } = await import('pdf-to-img');
+    const { createWorker } = await import('tesseract.js');
+
+    const worker = await createWorker('eng');
+    let fullText = '';
+    let pageNum = 0;
+
+    const document = await pdf(fileBuffer, { scale: 2 });
+    for await (const image of document) {
+      pageNum++;
+      console.log(`   🔍 OCR processing page ${pageNum}...`);
+      const { data: { text } } = await worker.recognize(image);
+      fullText += text + '\n';
+    }
+
+    await worker.terminate();
+    pdfText = fullText.trim();
+    if (!pdfText) {
+      throw new Error("OCR could not extract any text from the document images.");
+    }
+    console.log(`✅ OCR successful (${pageNum} pages scanned, ${pdfText.length} chars extracted)`);
+    return pdfText;
+  } catch (ocrErr) {
+    console.error("❌ OCR Error:", ocrErr.message);
+    throw new Error(`Failed to parse PDF text (Standard & OCR both failed): ${ocrErr.message}`);
   }
 }
 
