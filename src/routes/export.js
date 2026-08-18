@@ -2,12 +2,10 @@ import express from 'express';
 
 const router = express.Router();
 
-import { authenticate } from '../middleware/authMiddleware.js';
-
 // POST /api/export
 // Expects: { verifiedData: [{ Date: '...', Description: '...', Debit: '...', Credit: '...', Balance: '...' }, ...] }
 // Returns: A pure CSV file that the browser will automatically download
-router.post('/', authenticate, async (req, res) => {
+router.post('/', async (req, res) => {
   try {
     const { verifiedData } = req.body;
 
@@ -15,8 +13,8 @@ router.post('/', authenticate, async (req, res) => {
       return res.status(400).json({ status: 'error', message: 'verifiedData array is required and cannot be empty.' });
     }
 
-    // 1. Enforce strict financial columns for the CSV
-    const fields = ['Date', 'Description', 'Debit', 'Credit', 'Balance'];
+    // 1. Get the column headers (Date, Description, Debit, Credit, Balance)
+    const fields = Object.keys(verifiedData[0]);
     const csvRows = [];
     
     // 2. Add the Header row to the CSV

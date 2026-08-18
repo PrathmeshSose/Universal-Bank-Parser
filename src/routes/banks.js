@@ -1,11 +1,11 @@
 import express from 'express';
 import { getJsonFromS3 } from '../services/s3DatabaseService.js';
-import { authenticate } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
-// GET /api/banks - BUG-45 FIX: Added authentication guard
-router.get('/', authenticate, async (req, res) => {
+// GET /api/banks
+// Returns a list of all supported bank names from S3 database
+router.get('/', async (req, res) => {
   try {
     const templates = await getJsonFromS3('templates.json');
     const bankNames = templates.map(t => t.bankName);
