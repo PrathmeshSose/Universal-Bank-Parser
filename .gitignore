@@ -1,0 +1,22 @@
+# Environment variables — NEVER push to GitHub
+.env
+.env.local
+.env.production
+
+# Dependencies
+node_modules/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Build output
+dist/
+build/
+
+# AWS credentials
+.aws/
