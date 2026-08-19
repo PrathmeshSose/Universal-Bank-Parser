@@ -1,131 +1,298 @@
-import React from 'react';
-import { ArrowUpRight, Bell, CreditCard, ShieldAlert, FileText, CheckCircle2 } from 'lucide-react';
-import { formatRupee } from '../utils/currencyFormatter';
+import React, { useState, useEffect } from 'react';
+import { 
+  TrendingUp, 
+  TrendingDown, 
+  Wallet, 
+  FileCheck, 
+  AlertTriangle, 
+  UploadCloud, 
+  FileSpreadsheet, 
+  ArrowRight,
+  ShieldCheck,
+  Zap,
+  Building,
+  CheckCircle2,
+  Users,
+  Server,
+  Activity,
+  Database,
+  RefreshCw,
+  Clock
+} from 'lucide-react';
+import { formatCurrency } from '../utils/currencyFormatter.js';
+import { getDashboardStatsApi } from '../services/api.js';
 
-export const CorporateOverview = ({ onOpenParser }) => {
-  return (
-    <div className="space-y-6 animate-fade-in">
-      {/* Top Banner Alert */}
-      <div className="bg-amber-50 border border-amber-200/80 rounded-xl p-4 text-xs text-amber-950 flex flex-wrap items-center justify-between gap-3 shadow-sm">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-full bg-amber-200 text-amber-900 flex items-center justify-center font-bold text-sm shrink-0">
-            !
-          </div>
-          <div>
-            <strong className="font-bold text-amber-950 block text-sm">
-              Security Notice — Zero Storage Policy Active
-            </strong>
-            <span>
-              All uploaded bank statement files are processed in-memory only. No file data is written to disk or retained in any database after processing is complete.
-            </span>
-          </div>
-        </div>
-        <button className="text-purple-900 font-bold hover:underline shrink-0">
-          View Policy &gt;
-        </button>
+export const CorporateOverview = ({ 
+  onNavigateToUpload, 
+  onNavigateToLedger,
+  currentUser,
+  // BUG-C2 FIX: refreshKey changes when a new upload completes, triggering re-fetch
+  refreshKey = 0
+}) => {
+  const [metrics, setMetrics] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  const fetchMetrics = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await getDashboardStatsApi();
+      setMetrics({ ...data, role: data.role || currentUser?.role || 'user' });
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchMetrics();
+  // BUG-C2 FIX: Re-fetch whenever a new upload is completed
+  }, [refreshKey]);
+
+  if (loading) {
+    return (
+      <div className="overview-container animate-fade" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', flexDirection: 'column', gap: '15px' }}>
+        <RefreshCw size={32} className="animate-spin text-cyan" />
+        <p className="text-muted">Loading your personalized dashboard...</p>
       </div>
+    );
+  }
 
-      {/* Overview Cards Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-        {/* Upcoming Payables Card */}
-        <div className="bg-purple-900 text-white rounded-2xl p-5 shadow-lg relative overflow-hidden flex flex-col justify-between">
-          <div className="absolute top-0 right-0 w-32 h-32 bg-purple-600/30 rounded-full blur-2xl pointer-events-none" />
-          <div>
-            <div className="flex items-center justify-between text-purple-200 text-xs font-medium mb-3">
-              <span className="flex items-center gap-1.5">
-                <CreditCard className="w-4 h-4 text-purple-300" /> Upcoming Payables
-              </span>
-              <span className="text-[10px] bg-purple-800 px-2 py-0.5 rounded text-purple-200">Jul 2026</span>
-            </div>
-            <div className="text-3xl font-extrabold text-white font-outfit tracking-tight">
-              {formatRupee(184750.00)}
-            </div>
-            <p className="text-xs text-purple-200 mt-1">
-              3 Vendors Pending Approval
-            </p>
+  if (error || !metrics) {
+    const isOffline = error && (error.includes('Failed to fetch') || error.includes('Load failed') || error.includes('fetch'));
+    return (
+      <div className="overview-container animate-fade" style={{ padding: '20px', display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
+        <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', padding: '40px', maxWidth: '400px', borderTop: '4px solid var(--color-danger)' }}>
+          <Server size={40} style={{ marginBottom: '16px', color: 'var(--color-danger)' }} />
+          <h3 style={{ marginBottom: '8px' }}>{isOffline ? 'System Offline' : 'Dashboard Error'}</h3>
+          <p className="text-muted" style={{ marginBottom: '24px', fontSize: '14px' }}>
+            {isOffline 
+              ? 'The secure banking backend server appears to be unreachable or is currently restarting.' 
+              : `Error: ${error}`}
+          </p>
+          <button className="btn btn-primary" onClick={fetchMetrics}>
+            <RefreshCw size={15} />
+            <span>Retry Connection</span>
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const role = metrics.role || 'user';
+  const isSuperAdmin = role === 'super_admin';
+  const isAdmin = role === 'admin' || isSuperAdmin;
+
+  // Render role-specific content
+  return (
+    <div className="overview-container animate-fade">
+      {/* Dynamic Welcome Banner */}
+      <div className="yono-hero-banner glass-card">
+        <div className="hero-content">
+          <div className="hero-tag">
+            <ShieldCheck size={14} className="text-cyan" />
+            <span>SECURE ENTERPRISE RECONCILIATION</span>
           </div>
-          <div className="pt-4 border-t border-purple-800/80 flex items-center justify-between text-xs">
-            <span className="text-purple-300">Next Due: 10-AUG-2026</span>
-            <button
-              onClick={onOpenParser}
-              className="bg-white/10 hover:bg-white/20 text-white px-3 py-1 rounded-lg font-medium transition"
-            >
-              Parse Statements &gt;
+          <h2>
+            {isSuperAdmin ? 'Master Control Hub' : isAdmin ? 'Branch Operations Overview' : 'Analyst Performance Dashboard'}
+          </h2>
+          <p>
+            {isSuperAdmin 
+              ? 'Monitor global system health, active users, and AWS S3 storage infrastructure.'
+              : isAdmin
+                ? 'Oversee branch-level processing, analyst performance, and aggregated financial verification.'
+                : 'Welcome back. Monitor your monthly statement processing, verify ledgers, and export data.'}
+          </p>
+
+          <div className="hero-actions">
+            {!isSuperAdmin && (
+              <button className="btn btn-primary" onClick={onNavigateToUpload}>
+                <UploadCloud size={16} />
+                <span>Ingest New Statement</span>
+              </button>
+            )}
+            <button className="btn btn-secondary" onClick={onNavigateToLedger}>
+              <span>View Active Ledger</span>
+              <ArrowRight size={16} />
+            </button>
+            <button className="btn btn-secondary" onClick={fetchMetrics}>
+              <RefreshCw size={15} />
+              <span>Refresh Stats</span>
             </button>
           </div>
         </div>
 
-        {/* Credit Limit Overview */}
-        <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between text-slate-500 text-xs font-semibold uppercase tracking-wider mb-2">
-              <span>Fund Limit Overview</span>
-              <span className="text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">Active</span>
-            </div>
-            <div className="text-2xl font-bold text-slate-800 font-outfit">
-              {formatRupee(5000000.00)}
-            </div>
-            <p className="text-xs text-slate-500 mt-1">
-              Letter of Credit / Bank Guarantee Available
-            </p>
-          </div>
-          <div className="pt-3 border-t border-slate-100 text-xs text-slate-600 flex justify-between">
-            <span>Utilized: {formatRupee(1250000.00)}</span>
-            <span className="font-semibold text-purple-900 cursor-pointer hover:underline">View Details &gt;</span>
-          </div>
-        </div>
-
-        {/* Alerts Widget */}
-        <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between text-slate-700 text-xs font-bold mb-3">
-              <span className="flex items-center gap-1.5 text-slate-800">
-                <Bell className="w-4 h-4 text-purple-700" /> Recent Alerts
-              </span>
-              <span className="text-[10px] text-slate-400">Live Feed</span>
-            </div>
-
-            <div className="space-y-2 text-xs">
-              <div className="p-2 bg-slate-50 rounded-lg border border-slate-100 flex items-start gap-2">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
-                <div>
-                  <strong className="text-slate-800 font-medium block">Statement Parsed Successfully</strong>
-                  <span className="text-[10px] text-slate-500">6 Rows — Math Verified ✓</span>
-                </div>
-              </div>
-
-              <div className="p-2 bg-purple-50 rounded-lg border border-purple-100 flex items-start gap-2">
-                <FileText className="w-3.5 h-3.5 text-purple-700 shrink-0 mt-0.5" />
-                <div>
-                  <strong className="text-purple-950 font-medium block">Zero Storage Protocol Enforced</strong>
-                  <span className="text-[10px] text-purple-700">RAM Buffers Cleared After Processing</span>
-                </div>
-              </div>
-            </div>
+        <div className="hero-stats-badge">
+          <div className="kpi-score-circle">
+            <div className="kpi-score-number">{metrics.totalStatements || 0}</div>
+            <div className="kpi-score-label">{isAdmin ? 'Total Audited' : 'My Statements'}</div>
           </div>
         </div>
       </div>
 
-      {/* Quick Launch CTA Banner */}
-      <div className="bg-gradient-to-r from-slate-900 via-purple-950 to-slate-900 text-white rounded-2xl p-6 shadow-xl flex flex-wrap items-center justify-between gap-4">
-        <div className="space-y-1">
-          <div className="inline-flex items-center gap-1.5 bg-purple-500/20 text-purple-300 text-xs font-semibold px-3 py-1 rounded-full border border-purple-500/30">
-            ⚡ AI Multimodal Extraction Engine
+      {/* Primary KPI Metrics (Common across roles but scoped to data) */}
+      <div className="kpi-grid">
+        {/* Total Credits */}
+        <div className="kpi-card glass-card kpi-inflow">
+          <div className="kpi-header">
+            <span className="kpi-title">{isAdmin ? 'Global Total Credits' : 'My Total Credits'}</span>
+            <div className="kpi-icon inflow-icon">
+              <TrendingUp size={20} />
+            </div>
           </div>
-          <h3 className="text-xl font-bold text-white font-outfit">
-            Launch Universal Bank Parser
-          </h3>
-          <p className="text-xs text-slate-300 max-w-xl">
-            Upload PDF or scanned bank statements, inspect side-by-side with an editable data grid, resolve math discrepancies, and export directly to Google Sheets.
-          </p>
+          <div className="kpi-value text-success">
+            {formatCurrency(metrics.totalCredits)}
+          </div>
+          <div className="kpi-footer">
+            <span className="kpi-trend positive">
+              <CheckCircle2 size={13} /> Verified by AI
+            </span>
+          </div>
         </div>
-        <button
-          onClick={onOpenParser}
-          className="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold px-6 py-3 rounded-xl text-sm transition shadow-lg flex items-center gap-2"
-        >
-          Open Parser Workspace <ArrowUpRight className="w-4 h-4" />
-        </button>
+
+        {/* Total Debits */}
+        <div className="kpi-card glass-card kpi-outflow">
+          <div className="kpi-header">
+            <span className="kpi-title">{isAdmin ? 'Global Total Debits' : 'My Total Debits'}</span>
+            <div className="kpi-icon outflow-icon">
+              <TrendingDown size={20} />
+            </div>
+          </div>
+          <div className="kpi-value text-danger">
+            {formatCurrency(metrics.totalDebits)}
+          </div>
+          <div className="kpi-footer">
+            <span className="kpi-trend negative">Total Disbursed</span>
+          </div>
+        </div>
+
+        {/* Statement Volume */}
+        <div className="kpi-card glass-card kpi-balance">
+          <div className="kpi-header">
+            <span className="kpi-title">Processing Volume</span>
+            <div className="kpi-icon balance-icon">
+              <FileSpreadsheet size={20} />
+            </div>
+          </div>
+          <div className="kpi-value text-cyan">
+            {metrics.totalRows}
+          </div>
+          <div className="kpi-footer">
+            <span>Total Transaction Rows Extracted</span>
+          </div>
+        </div>
+
+        {/* Verification Status */}
+        <div className="kpi-card glass-card kpi-status">
+          <div className="kpi-header">
+            <span className="kpi-title">Audit Status</span>
+            <div className={`kpi-icon ${metrics.pendingCount > 0 ? 'flag-alert-icon' : 'flag-pass-icon'}`}>
+              {metrics.pendingCount > 0 ? <AlertTriangle size={20} /> : <FileCheck size={20} />}
+            </div>
+          </div>
+          <div className="kpi-value">
+            {metrics.pendingCount > 0 ? (
+              <span className="text-warning">{metrics.pendingCount} Pending</span>
+            ) : (
+              <span className="text-success">All Verified</span>
+            )}
+          </div>
+          <div className="kpi-footer">
+            <span>{metrics.verifiedCount} fully approved and locked</span>
+          </div>
+        </div>
       </div>
+
+      {/* Role-Specific Sections */}
+      
+      {/* SUPER ADMIN ONLY: System Health */}
+      {isSuperAdmin && metrics.systemHealth && (
+        <div className="quick-actions-section" style={{ marginTop: '20px' }}>
+          <h3 className="section-heading">System Infrastructure Health</h3>
+          <div className="quick-actions-grid">
+            <div className="action-tile glass-card">
+              <div className="action-tile-icon icon-cyan"><Users size={24} /></div>
+              <h4>User Directory</h4>
+              <p><strong>{metrics.totalUsers}</strong> Registered Accounts</p>
+              <p className="text-muted" style={{ fontSize: '12px' }}>{metrics.totalAdmins} Admins, {metrics.totalAnalysts} Analysts</p>
+            </div>
+            <div className="action-tile glass-card">
+              <div className="action-tile-icon icon-gold"><Database size={24} /></div>
+              <h4>AWS S3 Data Lake</h4>
+              <p><strong>Connected</strong></p>
+              <p className="text-muted" style={{ fontSize: '12px' }}>Estimated Storage: {(metrics.s3StorageBytes / 1024 / 1024).toFixed(2)} MB</p>
+            </div>
+            <div className="action-tile glass-card">
+              <div className="action-tile-icon icon-blue"><Activity size={24} /></div>
+              <h4>AI Engine Status</h4>
+              <p><strong>{metrics.systemHealth.bedrockStatus}</strong></p>
+              <p className="text-muted" style={{ fontSize: '12px' }}>Zero-disk RAM usage: {metrics.systemHealth.ramUsage}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ADMIN & SUPER ADMIN: Recent Activity Feed */}
+      {isAdmin && metrics.recentActivity && metrics.recentActivity.length > 0 && (
+        <div className="quick-actions-section" style={{ marginTop: '20px' }}>
+          <h3 className="section-heading">Recent Branch Activity</h3>
+          <div className="glass-card" style={{ padding: '0', overflow: 'hidden' }}>
+            <table className="yono-table">
+              <thead>
+                <tr>
+                  <th>Client Name</th>
+                  <th>Bank</th>
+                  <th>Processed By</th>
+                  <th>Status</th>
+                  <th>Date</th>
+                </tr>
+              </thead>
+              <tbody>
+                {metrics.recentActivity.map((act, i) => (
+                  <tr key={i}>
+                    <td className="font-bold">{act.clientName}</td>
+                    <td><span className="history-bank-tag">{act.bankName}</span></td>
+                    <td className="font-mono text-xs">{act.processedBy}</td>
+                    <td>
+                      {act.status === 'verified' 
+                        ? <span className="status-tag tag-active"><CheckCircle2 size={11} /> Verified</span> 
+                        : <span className="status-tag tag-pending"><Clock size={11} /> Pending</span>}
+                    </td>
+                    <td className="text-muted text-xs">{new Date(act.date).toLocaleString('en-IN')}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* USER (Analyst) ONLY: Quick Actions */}
+      {!isAdmin && (
+        <div className="quick-actions-section" style={{ marginTop: '20px' }}>
+          <h3 className="section-heading">Quick Banking Actions</h3>
+          <div className="quick-actions-grid">
+            <div className="action-tile glass-card" onClick={onNavigateToUpload}>
+              <div className="action-tile-icon icon-blue"><UploadCloud size={24} /></div>
+              <h4>Upload Statement</h4>
+              <p>Direct upload with automated OCR text recognition.</p>
+            </div>
+            <div className="action-tile glass-card" onClick={onNavigateToLedger}>
+              <div className="action-tile-icon icon-cyan"><FileSpreadsheet size={24} /></div>
+              <h4>Verify Ledger</h4>
+              <p>Split-screen verification and manual math audits.</p>
+            </div>
+            <div className="action-tile glass-card">
+              <div className="action-tile-icon icon-gold"><Zap size={24} /></div>
+              <h4>Automated Math Audit</h4>
+              <p>Instant verification of running balances.</p>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };

@@ -1,232 +1,151 @@
-import React from "react";
-import {
-  FileText,
+import React from 'react';
+import { 
+  LayoutDashboard, 
+  FileUp, 
+  TableProperties, 
+  Database, 
+  ChevronLeft, 
+  ChevronRight, 
+  BookOpenCheck,
   ShieldCheck,
-  Users,
-  Settings,
-  ChevronRight,
-} from "lucide-react";
+  Crown,
+  History,
+  BarChart
+} from 'lucide-react';
 
-function Sidebar({
-  activeTab,
-  setActiveTab,
-  adminSection,
-  setAdminSection,
-  onOpenAdmin,
-}) {
-  const handleParserClick = () => {
-    setActiveTab("parser");
-  };
-
-  const handleAdminClick = () => {
-    const section = adminSection || "users";
-
-    setAdminSection(section);
-    setActiveTab("admin");
-
-    if (onOpenAdmin) {
-      onOpenAdmin(section);
-    }
-  };
-
-  const handleAdminSectionClick = (section) => {
-    setAdminSection(section);
-    setActiveTab("admin");
-
-    if (onOpenAdmin) {
-      onOpenAdmin(section);
-    }
-  };
+export const Sidebar = ({ 
+  activeTab, 
+  onSelectTab, 
+  flagCount = 0, 
+  collapsed, 
+  onToggleCollapse, 
+  currentUser 
+}) => {
+  const role = currentUser?.role?.toLowerCase() || '';
+  const isSuperAdmin = role === 'super_admin';
+  const isAdmin = role === 'admin' || isSuperAdmin;
 
   return (
-    <aside className="hidden w-[270px] shrink-0 border-r border-slate-200 bg-white lg:block">
-      <div className="sticky top-0 flex h-[calc(100vh-102px)] flex-col">
-        {/* =====================================================
-            NAVIGATION
-        ===================================================== */}
-        <div className="flex-1 overflow-y-auto p-4">
-          {/* APPLICATION */}
-          <p className="mb-3 px-3 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
-            Application
+    <aside className={`yono-sidebar ${collapsed ? 'collapsed' : ''}`}>
+      <div className="sidebar-nav">
+        {/* Core Operations Tabs (Visible to all users) */}
+        {!collapsed && (
+          <p className="sidebar-section-title">
+            FINANCIAL PARSER
           </p>
+        )}
 
-          {/* =================================================
-              STATEMENT PARSER
-          ================================================= */}
-          <button
-            type="button"
-            onClick={handleParserClick}
-            className={`group flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition ${activeTab === "parser"
-                ? "bg-[#11152a] text-white shadow-md"
-                : "text-slate-700 hover:bg-slate-50"
-              }`}
-          >
-            <span
-              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${activeTab === "parser"
-                  ? "bg-white/10"
-                  : "bg-slate-100 text-slate-500"
-                }`}
-            >
-              <FileText size={17} />
-            </span>
-
-            <span className="min-w-0 flex-1">
-              <span className="block text-sm font-extrabold">
-                Statement Parser
-              </span>
-
-              <span
-                className={`mt-0.5 block text-[11px] ${activeTab === "parser"
-                    ? "text-slate-400"
-                    : "text-slate-500"
-                  }`}
-              >
-                Upload, extract and validate
-              </span>
-            </span>
-
-            {activeTab === "parser" && (
-              <ChevronRight
-                size={15}
-                className="shrink-0 text-slate-400"
-              />
-            )}
-          </button>
-
-          {/* =================================================
-              ADMINISTRATION
-          ================================================= */}
-          <p className="mb-3 mt-8 px-3 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
-            Administration
-          </p>
-
-          {/* =================================================
-              ADMIN PANEL
-          ================================================= */}
-          <button
-            type="button"
-            onClick={handleAdminClick}
-            className={`group flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition ${activeTab === "admin"
-                ? "bg-[#11152a] text-white shadow-md"
-                : "text-slate-700 hover:bg-slate-50"
-              }`}
-          >
-            <span
-              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${activeTab === "admin"
-                  ? "bg-white/10"
-                  : "bg-slate-100 text-slate-500"
-                }`}
-            >
-              <ShieldCheck size={17} />
-            </span>
-
-            <span className="min-w-0 flex-1">
-              <span className="block text-sm font-extrabold">
-                Admin Panel
-              </span>
-
-              <span
-                className={`mt-0.5 block text-[11px] ${activeTab === "admin"
-                    ? "text-slate-400"
-                    : "text-slate-500"
-                  }`}
-              >
-                Users, access and system
-              </span>
-            </span>
-
-            {activeTab === "admin" && (
-              <ChevronRight
-                size={15}
-                className="shrink-0 text-slate-400"
-              />
-            )}
-          </button>
-
-          {/* =================================================
-              ADMIN SUB NAVIGATION
-          ================================================= */}
-          {activeTab === "admin" && (
-            <div className="mt-2 space-y-1 border-l border-slate-200 pl-3">
-              {/* USER MANAGEMENT */}
-              <button
-                type="button"
-                onClick={() =>
-                  handleAdminSectionClick("users")
-                }
-                className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition ${adminSection === "users"
-                    ? "bg-indigo-50 text-indigo-700"
-                    : "text-slate-600 hover:bg-slate-50"
-                  }`}
-              >
-                <Users
-                  size={15}
-                  className={
-                    adminSection === "users"
-                      ? "text-indigo-600"
-                      : "text-slate-400"
-                  }
-                />
-
-                <span className="text-xs font-bold">
-                  User Management
-                </span>
-              </button>
-
-              {/* SYSTEM */}
-              <button
-                type="button"
-                onClick={() =>
-                  handleAdminSectionClick("system")
-                }
-                className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition ${adminSection === "system"
-                    ? "bg-indigo-50 text-indigo-700"
-                    : "text-slate-600 hover:bg-slate-50"
-                  }`}
-              >
-                <Settings
-                  size={15}
-                  className={
-                    adminSection === "system"
-                      ? "text-indigo-600"
-                      : "text-slate-400"
-                  }
-                />
-
-                <span className="text-xs font-bold">
-                  System
-                </span>
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* =====================================================
-            SECURITY FOOTER
-        ===================================================== */}
-        <div className="border-t border-slate-200 p-4">
-          <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-3">
-            <div className="flex items-start gap-2.5">
-              <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-emerald-600">
-                <ShieldCheck size={15} />
-              </div>
-
-              <div>
-                <p className="text-[10px] font-black uppercase tracking-wider text-emerald-700">
-                  Secure Processing
-                </p>
-
-                <p className="mt-1 text-[10px] leading-4 text-emerald-700/80">
-                  Statement data is processed temporarily
-                  and is not permanently stored.
-                </p>
-              </div>
-            </div>
+        <button
+          className={`sidebar-link ${activeTab === 'dashboard' ? 'active' : ''}`}
+          onClick={() => onSelectTab('dashboard')}
+          title={collapsed ? 'Corporate Overview' : undefined}
+        >
+          <div className="link-icon-wrap">
+            <LayoutDashboard size={19} />
           </div>
-        </div>
+          {!collapsed && <span className="link-text">Corporate Overview</span>}
+        </button>
+
+        <button
+          className={`sidebar-link ${activeTab === 'extractor' ? 'active' : ''}`}
+          onClick={() => onSelectTab('extractor')}
+          title={collapsed ? 'Statement Ingestion' : undefined}
+        >
+          <div className="link-icon-wrap">
+            <FileUp size={19} />
+          </div>
+          {!collapsed && <span className="link-text">Statement Ingestion</span>}
+        </button>
+
+        <button
+          className={`sidebar-link ${activeTab === 'verification' ? 'active' : ''}`}
+          onClick={() => onSelectTab('verification')}
+          title={collapsed ? 'Verification Ledger' : undefined}
+        >
+          <div className="link-icon-wrap">
+            <TableProperties size={19} />
+          </div>
+          {!collapsed && <span className="link-text">Verification Ledger</span>}
+          {!collapsed && flagCount > 0 && (
+            <span className="link-badge badge-danger">{flagCount}</span>
+          )}
+        </button>
+
+        <button
+          className={`sidebar-link ${activeTab === 'history' ? 'active' : ''}`}
+          onClick={() => onSelectTab('history')}
+          title={collapsed ? 'Statement History' : undefined}
+        >
+          <div className="link-icon-wrap">
+            <History size={19} />
+          </div>
+          {!collapsed && <span className="link-text">Statement History</span>}
+        </button>
+
+        <button
+          className={`sidebar-link ${activeTab === 'reports' ? 'active' : ''}`}
+          onClick={() => onSelectTab('reports')}
+          title={collapsed ? 'Reports & Exports' : undefined}
+        >
+          <div className="link-icon-wrap">
+            <BarChart size={19} />
+          </div>
+          {!collapsed && <span className="link-text">Reports & Exports</span>}
+        </button>
+
+        {/* 6.1 Administration Section Gating (Admin & Super Admin Only) */}
+        {isAdmin && (
+          <div className="admin-sidebar-section">
+            {!collapsed && (
+              <p className="sidebar-section-title admin-title">
+                ADMINISTRATION
+              </p>
+            )}
+
+            <button
+              className={`sidebar-link ${activeTab === 'admin' ? 'active' : ''}`}
+              onClick={() => onSelectTab('admin')}
+              title={collapsed ? 'System & Users Hub' : undefined}
+            >
+              <div className="link-icon-wrap">
+                {isSuperAdmin ? <Crown size={19} className="text-gold" /> : <Database size={19} />}
+              </div>
+              {!collapsed && (
+                <span className="link-text">
+                  {isSuperAdmin ? 'Master Control Hub' : 'System Admin Panel'}
+                </span>
+              )}
+              {!collapsed && (
+                <span className={`link-badge ${isSuperAdmin ? 'badge-super' : 'badge-admin'}`}>
+                  {isSuperAdmin ? 'SUPER' : 'ADMIN'}
+                </span>
+              )}
+            </button>
+          </div>
+        )}
       </div>
+
+      {/* Security Status Card */}
+      {!collapsed && (
+        <div className="sidebar-compliance-card glass-card">
+          <div className="compliance-icon">
+            <ShieldCheck size={18} className="text-cyan" />
+          </div>
+          <div className="compliance-title">Zero Storage RAM Active</div>
+          <p className="compliance-desc">
+            Multi-tier RBAC enforced. Statements processed in RAM with S3 Data Lake audit logs.
+          </p>
+        </div>
+      )}
+
+      {/* Collapse Toggle */}
+      <button 
+        className="sidebar-collapse-btn" 
+        onClick={onToggleCollapse}
+        title={collapsed ? 'Expand Menu' : 'Collapse Menu'}
+      >
+        {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+      </button>
     </aside>
   );
-}
-
-export default Sidebar;
+};

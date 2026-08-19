@@ -1,26 +1,11 @@
-const TOKEN_KEY = "ubp_token";
-const USER_KEY = "ubp_user";
+/**
+ * Universal Bank Parser - Centralized API Service (Enterprise Edition)
+ * Backend URL: /api (proxied to http://localhost:5000 in Vite dev)
+ */
 
-let API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || "http://localhost:5002";
-
-API_BASE_URL = API_BASE_URL.replace(/\/+$/, "");
-
-/* =========================================================
-   API CONFIG
-========================================================= */
-
-export const setApiBaseUrl = (url) => {
-  if (url) {
-    API_BASE_URL = url.replace(/\/+$/, "");
-  }
-};
-
-export const getApiBaseUrl = () => API_BASE_URL;
-
-/* =========================================================
-   AUTH
-========================================================= */
+const API_BASE_URL = '/api';
+const TOKEN_KEY = 'ubp_token';
+const USER_KEY = 'ubp_user';
 
 export const setAuthToken = (token) => {
   if (token) {
@@ -30,446 +15,298 @@ export const setAuthToken = (token) => {
   }
 };
 
-export const getAuthToken = () => {
-  return localStorage.getItem(TOKEN_KEY);
-};
-
-export const clearAuthToken = () => {
-  localStorage.removeItem(TOKEN_KEY);
-  localStorage.removeItem(USER_KEY);
-};
+export const getAuthToken = () => localStorage.getItem(TOKEN_KEY);
 
 export const getCurrentUser = () => {
+  const userStr = localStorage.getItem(USER_KEY);
+  if (!userStr) return null;
   try {
-    const user = localStorage.getItem(USER_KEY);
-    return user ? JSON.parse(user) : null;
+    return JSON.parse(userStr);
   } catch {
     return null;
   }
 };
 
-/* =========================================================
-   LOGIN
-========================================================= */
+export const clearAuth = () => {
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(USER_KEY);
+};
+
+const handleAuthError = (res) => {
+  // BUG-S1 FIX: Only clear auth on 401 (token expired/invalid).
+  // 403 (Forbidden) means the token is valid but the user lacks permission — do NOT log them out.
+  if (res.status === 401) {
+    clearAuth();
+    window.location.reload();
+  }
+  return res;
+};
 
 export const loginApi = async (email, password) => {
-  if (!email?.trim() || !password) {
-    throw new Error("Email and password are required.");
+  if (!email || !password) {
+    throw new Error('Email and password are required.');
   }
 
-  const normalizedEmail = email.trim().toLowerCase();
+  const response = await fetch(`${API_BASE_URL}/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      email: email.trim().toLowerCase(),
+      password: password
+    }),
+  });
 
-  const user = {
-    id: `local-${Date.now()}`,
-    name: normalizedEmail.split("@")[0],
-    email: normalizedEmail,
-    role: "USER",
-  };
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.error || data.message || 'Login failed.');
+  }
 
-  const token = `local-token-${Date.now()}`;
-
-  localStorage.setItem(USER_KEY, JSON.stringify(user));
-  setAuthToken(token);
+  // Store real JWT token and user info
+  setAuthToken(data.token);
+  localStorage.setItem(USER_KEY, JSON.stringify(data.user));
 
   return {
     success: true,
-    token,
-    user,
+    token: data.token,
+    user: data.user,
   };
 };
-
-/* =========================================================
-   REGISTER
-========================================================= */
 
 export const registerApi = async (name, email, password) => {
-  if (!name?.trim() || !email?.trim() || !password) {
-    throw new Error("Name, email and password are required.");
+  if (!name || !email || !password) {
+    throw new Error('Name, email, and password are required.');
   }
 
-  const user = {
-    id: `local-${Date.now()}`,
-    name: name.trim(),
-    email: email.trim().toLowerCase(),
-    role: "USER",
-  };
+  const response = await fetch(`${API_BASE_URL}/auth/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name: name.trim(),
+      email: email.trim().toLowerCase(),
+      password: password
+    }),
+  });
 
-  const token = `local-token-${Date.now()}`;
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.error || data.message || 'Registration failed.');
+  }
 
-  localStorage.setItem(USER_KEY, JSON.stringify(user));
-  setAuthToken(token);
-
-  return {
-    success: true,
-    token,
-    user,
-  };
+  // Automatically log in after registration
+  return loginApi(email, password);
 };
 
-/* =========================================================
-   LOGOUT
-========================================================= */
+export const uploadBankStatementApi = async (file, bankName = 'HDFC', password = '', clientName = '', statementPeriod = '') => {
+  if (!file) throw new Error('No file selected.');
 
-export const logoutApi = () => {
-  clearAuthToken();
-};
-
-/* =========================================================
-   BACKEND HEALTH
-========================================================= */
-
-export const checkBackendHealthApi = async () => {
-  const url = `${API_BASE_URL}/api/health`;
-
-  try {
-    const response = await fetch(url, {
-      method: "GET",
-      headers: {
-        Accept: "application/json",
-      },
-    });
-
-    const data = await response.json().catch(() => ({}));
-
-    return {
-      connected: response.ok,
-      serverData: data,
-      error: response.ok
-        ? null
-        : data?.message || `Backend returned ${response.status}`,
-    };
-  } catch (error) {
-    return {
-      connected: false,
-      serverData: null,
-      error: `Cannot connect to backend at ${url}. ${error?.message || ""}`,
-    };
-  }
-};
-
-/* =========================================================
-   BANKS
-========================================================= */
-
-export const getBanksApi = async () => {
-  try {
-    const response = await fetch(`${API_BASE_URL}/api/banks`, {
-      method: "GET",
-      cache: "no-store",
-    });
-
-    const data = await response.json().catch(() => ({}));
-
-    if (response.ok && Array.isArray(data?.banks)) {
-      return {
-        success: true,
-        banks: data.banks,
-      };
-    }
-  } catch {
-    // Local fallback
-  }
-
-  return {
-    success: true,
-    banks: [
-      {
-        id: "SBI",
-        name: "State Bank of India",
-      },
-      {
-        id: "HDFC",
-        name: "HDFC Bank",
-      },
-      {
-        id: "ICICI",
-        name: "ICICI Bank",
-      },
-      {
-        id: "Axis",
-        name: "Axis Bank",
-      },
-    ],
-  };
-};
-
-/* =========================================================
-   UPLOAD BANK STATEMENT
-========================================================= */
-
-export const uploadBankStatementApi = async (
-  file,
-  bankName = "HDFC",
-  password = ""
-) => {
-  if (!file) {
-    throw new Error("No PDF file selected.");
-  }
-
-  if (!(file instanceof File)) {
-    throw new Error("Invalid PDF file.");
-  }
-
-  if (file.type !== "application/pdf") {
-    throw new Error("Only PDF files are allowed.");
-  }
-
-  if (file.size === 0) {
-    throw new Error("The selected PDF is empty.");
-  }
-
-  if (file.size > 5 * 1024 * 1024) {
-    throw new Error("File size must be 5 MB or smaller.");
-  }
-
-  if (!bankName?.trim()) {
-    throw new Error("Please select a bank.");
+  const token = getAuthToken();
+  if (!token) {
+    throw new Error('You must be logged in to upload bank statements.');
   }
 
   const formData = new FormData();
-
-  formData.append("document", file, file.name);
-  formData.append("bankName", bankName.trim());
-
+  formData.append('document', file);
+  formData.append('bankName', bankName);
+  formData.append('clientName', clientName);
+  formData.append('statementPeriod', statementPeriod);
   if (password) {
-    formData.append("password", password);
+    formData.append('password', password);
   }
 
-  const token = getAuthToken();
+  const response = await fetch(`${API_BASE_URL}/upload`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`
+    },
+    body: formData,
+  }).then(handleAuthError);
 
-  const headers = {};
-
-  if (token) {
-    headers.Authorization = `Bearer ${token}`;
-  }
-
-  console.log("======================================");
-  console.log("UPLOAD STARTED");
-  console.log("File:", file.name);
-  console.log("Size:", file.size);
-  console.log("Type:", file.type);
-  console.log("Bank:", bankName);
-  console.log("Backend:", API_BASE_URL);
-  console.log("======================================");
-
-  let response;
-
-  try {
-    response = await fetch(`${API_BASE_URL}/api/upload`, {
-      method: "POST",
-      headers,
-      body: formData,
-      cache: "no-store",
-    });
-  } catch (error) {
-    throw new Error(
-      `Cannot connect to backend at ${API_BASE_URL}. Make sure backend is running.`
-    );
-  }
-
-  const rawText = await response.text();
-
-  let result = {};
-
-  try {
-    result = rawText ? JSON.parse(rawText) : {};
-  } catch {
-    throw new Error(
-      `Backend returned invalid JSON (${response.status}).`
-    );
-  }
-
-  console.log("UPLOAD RESPONSE:", result);
-
+  const result = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(
-      result?.message ||
-        result?.error ||
-        `Upload failed with HTTP ${response.status}.`
-    );
+    throw new Error(result?.message || result?.error || `Upload failed (${response.status}).`);
   }
 
-  if (result?.status !== "success") {
-    throw new Error(
-      result?.message || "Backend did not successfully process the PDF."
-    );
-  }
-
-  const transactions =
-    result?.data?.transactions ??
-    result?.transactions ??
-    result?.data ??
-    [];
-
-  if (!Array.isArray(transactions)) {
-    throw new Error(
-      "Backend returned no transaction array."
-    );
-  }
-
+  const transactions = result?.data?.transactions || result?.data || result?.transactions || [];
   return {
     success: true,
-    status: "success",
-    message:
-      result?.message ||
-      "PDF processed successfully.",
-    data: result?.data,
-    transactions,
-    downloadUrl: result?.downloadUrl || null,
+    ...result,
+    transactions: Array.isArray(transactions) ? transactions : [],
+    recordId: result?.recordId
   };
 };
 
-/* =========================================================
-   CSV EXPORT
-========================================================= */
+export const updateRecordStatusApi = async (recordId, status) => {
+  const token = getAuthToken();
+  const headers = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
 
-export const exportToGoogleSheetsApi = async (
-  verifiedTransactions,
-  spreadsheetId = null,
-  sheetName = "Bank_Transactions"
-) => {
-  if (!Array.isArray(verifiedTransactions)) {
-    throw new Error("Invalid transaction data.");
+  const res = await fetch(`${API_BASE_URL}/records/${recordId}/status`, {
+    method: 'PATCH',
+    headers,
+    body: JSON.stringify({ status })
+  }).then(handleAuthError);
+
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.error || 'Failed to update record status');
   }
 
-  if (verifiedTransactions.length === 0) {
-    throw new Error("There are no transactions to export.");
-  }
-
-  const escapeCsv = (value) => {
-    if (value === null || value === undefined) {
-      return "";
-    }
-
-    const text = String(value);
-
-    if (
-      text.includes(",") ||
-      text.includes('"') ||
-      text.includes("\n") ||
-      text.includes("\r")
-    ) {
-      return `"${text.replace(/"/g, '""')}"`;
-    }
-
-    return text;
-  };
-
-  const headers = [
-    "Date",
-    "Description",
-    "Previous Balance",
-    "Debit",
-    "Credit",
-    "Current Balance",
-    "Validation Status",
-    "Line Number",
-  ];
-
-  const rows = verifiedTransactions.map((tx, index) => [
-    tx.date || "",
-    tx.description || "",
-    tx.prevBalance ?? "",
-    tx.debit ?? "",
-    tx.credit ?? "",
-    tx.currBalance ?? "",
-    tx.flagged ? "Flagged" : "Valid",
-    tx.lineNo ?? index + 1,
-  ]);
-
-  const csv = [headers, ...rows]
-    .map((row) => row.map(escapeCsv).join(","))
-    .join("\r\n");
-
-  const blob = new Blob(["\uFEFF" + csv], {
-    type: "text/csv;charset=utf-8;",
-  });
-
-  const url = URL.createObjectURL(blob);
-
-  const link = document.createElement("a");
-
-  link.href = url;
-  link.download = `${sheetName || "Bank_Transactions"}.csv`;
-
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-
-  URL.revokeObjectURL(url);
-
-  return {
-    success: true,
-    downloaded: true,
-    message: "Transactions downloaded successfully.",
-  };
+  return await res.json();
 };
 
-/* =========================================================
-   DEMO DATA
-   ONLY FOR EXPLICIT DEMO BUTTON.
-   NEVER USED BY REAL PDF UPLOAD.
-========================================================= */
+export const exportVerifiedDataApi = async (verifiedData) => {
+  const token = getAuthToken();
+  const headers = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
 
-export const getMockSbiTransactions = () => [
-  {
-    id: "tx-101",
-    lineNo: 1,
-    date: "2026-07-01",
-    description: "NEFT CREDIT - JULY SALARY",
-    prevBalance: 150000,
-    debit: 0,
-    credit: 85000,
-    currBalance: 235000,
-  },
-  {
-    id: "tx-102",
-    lineNo: 2,
-    date: "2026-07-03",
-    description: "ATM CASH WITHDRAWAL",
-    prevBalance: 235000,
-    debit: 10000,
-    credit: 0,
-    currBalance: 225000,
-  },
-  {
-    id: "tx-103",
-    lineNo: 3,
-    date: "2026-07-05",
-    description: "UPI PAYMENT - VENDOR SUPPLIES PVT LTD",
-    prevBalance: 225000,
-    debit: 45250,
-    credit: 0,
-    currBalance: 179750,
-  },
-  {
-    id: "tx-104",
-    lineNo: 4,
-    date: "2026-07-08",
-    description: "CHEQUE PAYMENT - VENDOR INVOICE #948210",
-    prevBalance: 179750,
-    debit: 20000,
-    credit: 0,
-    currBalance: 159750,
-  },
-  {
-    id: "tx-105",
-    lineNo: 5,
-    date: "2026-07-11",
-    description: "RTGS INWARD - DIVIDEND RECEIVED",
-    prevBalance: 159750,
-    debit: 0,
-    credit: 32400,
-    currBalance: 192150,
-  },
-  {
-    id: "tx-106",
-    lineNo: 6,
-    date: "2026-07-14",
-    description: "BILL PAYMENT - ELECTRICITY CHARGES",
-    prevBalance: 192150,
-    debit: 4150,
-    credit: 0,
-    currBalance: 188000,
-  },
-];
+  const res = await fetch(`${API_BASE_URL}/export`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ verifiedData })
+  }).then(handleAuthError);
+
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.message || 'Export failed');
+  }
+
+  const blob = await res.blob();
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `verified_statement_${Date.now()}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  window.URL.revokeObjectURL(url);
+  return true;
+};
+
+// Admin User Management APIs
+export const getUsersApi = async () => {
+  const token = getAuthToken();
+  const res = await fetch(`${API_BASE_URL}/auth/users`, {
+    headers: { 'Authorization': `Bearer ${token}` }
+  }).then(handleAuthError);
+  if (!res.ok) throw new Error('Failed to fetch users directory');
+  const data = await res.json();
+  return data.data || [];
+};
+
+export const updateUserRoleApi = async (userId, role, status) => {
+  const token = getAuthToken();
+  const res = await fetch(`${API_BASE_URL}/auth/users/${userId}/role`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`
+    },
+    body: JSON.stringify({ role, status })
+  }).then(handleAuthError);
+  if (!res.ok) throw new Error('Failed to update user role/status');
+  return await res.json();
+};
+
+export const deleteUserApi = async (userId) => {
+  const token = getAuthToken();
+  const res = await fetch(`${API_BASE_URL}/auth/users/${userId}`, {
+    method: 'DELETE',
+    headers: { 'Authorization': `Bearer ${token}` }
+  }).then(handleAuthError);
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || 'Failed to delete user');
+  }
+  return await res.json();
+};
+
+export const createUserApi = async (name, email, password, role = 'user') => {
+  const token = getAuthToken();
+  const res = await fetch(`${API_BASE_URL}/auth/users/create`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`
+    },
+    body: JSON.stringify({ name, email, password, role })
+  }).then(handleAuthError);
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to create user');
+  return data;
+};
+
+export const getDashboardStatsApi = async () => {
+  const token = getAuthToken();
+  const res = await fetch(`${API_BASE_URL}/stats/dashboard`, {
+    headers: { 'Authorization': `Bearer ${token}` }
+  }).then(handleAuthError);
+  if (!res.ok) throw new Error('Failed to fetch dashboard stats');
+  const data = await res.json();
+  return data.data;
+};
+
+export const downloadPdfApi = async (recordId, filename) => {
+  const token = getAuthToken();
+  const res = await fetch(`${API_BASE_URL}/records/${recordId}/pdf`, {
+    headers: { 'Authorization': `Bearer ${token}` }
+  }).then(handleAuthError);
+  if (!res.ok) throw new Error('Failed to download PDF');
+  
+  const blob = await res.blob();
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename || `Statement_${recordId}.pdf`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.URL.revokeObjectURL(url);
+};
+
+export const downloadRecordCsvApi = async (record) => {
+  const token = getAuthToken();
+  // Try fetching full transaction data from backend
+  try {
+    const res = await fetch(`${API_BASE_URL}/records/${record.id}/transactions`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    }).then(handleAuthError);
+
+    if (res.ok) {
+      const data = await res.json();
+      const txns = data.data || data.transactions || [];
+      if (txns.length > 0) {
+        const headers = Object.keys(txns[0]).join(',');
+        const rows = txns.map(t => Object.values(t).map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+        const csv = `${headers}\n${rows}`;
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = `${record.clientName || 'Statement'}_${record.bankName}_${record.id}.csv`;
+        document.body.appendChild(a); a.click(); a.remove();
+        window.URL.revokeObjectURL(url);
+        return;
+      }
+    }
+  } catch (_) { /* fallback */ }
+
+  // Fallback: export record summary as CSV
+  const headers = 'Client Name,Bank,Period,Credits,Debits,Rows,Processed By,Date,Status';
+  const row = `"${record.clientName || ''}","${record.bankName || ''}","${record.statementPeriod || ''}","${record.totalCredit || 0}","${record.totalDebit || 0}","${record.transactionCount || 0}","${record.processedBy || ''}","${record.processedAt || ''}","${record.status || ''}"`;
+  const csv = `${headers}\n${row}`;
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `${record.clientName || 'Statement'}_${record.bankName}_summary.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  window.URL.revokeObjectURL(url);
+};
+
+// Health Check API
+export const checkHealthApi = async () => {
+  try {
+    const res = await fetch(`${API_BASE_URL}/health`);
+    return await res.json();
+  } catch (err) {
+    return { status: 'error', message: err.message };
+  }
+};

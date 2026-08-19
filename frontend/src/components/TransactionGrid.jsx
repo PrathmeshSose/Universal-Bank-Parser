@@ -1,236 +1,308 @@
-import React from "react";
-import {
-  Trash2,
-  AlertTriangle,
-  CheckCircle2,
-} from "lucide-react";
+import React, { useState } from 'react';
+import { 
+  Search, 
+  Plus, 
+  Trash2, 
+  Download, 
+  FileSpreadsheet, 
+  AlertCircle, 
+  Check, 
+  Edit3, 
+  FileText,
+  Filter,
+  RefreshCw
+} from 'lucide-react';
+import { formatCurrency } from '../utils/currencyFormatter.js';
+import { updateRecordStatusApi } from '../services/api.js';
 
-function formatAmount(value) {
-  const amount = Number(value || 0);
+export const TransactionGrid = ({ 
+  transactions = [], 
+  onUpdateTransactions, 
+  onOpenExport, 
+  flagCount = 0,
+  recordId,
+  // BUG-F3 FIX: Accept lock state from parent so it survives tab navigation
+  isInitiallyLocked = false,
+  onLocked
+}) => {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterType, setFilterType] = useState('all'); // all, debit, credit, flagged
+  const [editingCell, setEditingCell] = useState(null); // { rowIndex, field }
+  // BUG-F3 FIX: Initialize from prop so navigating away and back restores locked state
+  const [isLocked, setIsLocked] = useState(isInitiallyLocked);
+  const [analystNote, setAnalystNote] = useState('');
 
-  return amount.toLocaleString("en-IN", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
+  // Search and Filter logic
+  const filteredTransactions = transactions.filter((tx, idx) => {
+    const desc = (tx.Description || tx.description || '').toLowerCase();
+    const date = (tx.Date || tx.date || '').toLowerCase();
+    const matchesSearch = desc.includes(searchTerm.toLowerCase()) || date.includes(searchTerm.toLowerCase());
+
+    if (!matchesSearch) return false;
+
+    if (filterType === 'debit') return Boolean(tx.Debit || tx.debit);
+    if (filterType === 'credit') return Boolean(tx.Credit || tx.credit);
+    if (filterType === 'flagged') return Boolean(tx._isFlagged);
+    return true;
   });
-}
 
-function TransactionGrid({
-  transactions = [],
-  onChange,
-  onDelete,
-}) {
+  const handleCellChange = (rowIndex, field, value) => {
+    const updated = [...transactions];
+    updated[rowIndex] = {
+      ...updated[rowIndex],
+      [field]: value
+    };
+    onUpdateTransactions(updated);
+  };
+
+  const handleAddRow = () => {
+    const newRow = {
+      _id: `manual_${Date.now()}`,
+      Date: new Date().toLocaleDateString('en-GB'),
+      Description: 'Manual Adjustment',
+      Debit: '',
+      Credit: '',
+      Balance: transactions[transactions.length - 1]?.Balance || '0.00'
+    };
+    onUpdateTransactions([...transactions, newRow]);
+  };
+
+  const handleDeleteRow = (indexToDelete) => {
+    const updated = transactions.filter((_, idx) => idx !== indexToDelete);
+    onUpdateTransactions(updated);
+  };
+
+  const handleApproveAndLock = async () => {
+    try {
+      if (recordId) {
+        await updateRecordStatusApi(recordId, 'verified');
+      }
+      setIsLocked(true);
+      // BUG-F3 FIX: Notify parent so lock state persists across tab navigation
+      if (onLocked) onLocked();
+    } catch (err) {
+      alert('Failed to update record status: ' + err.message);
+    }
+  };
+
   return (
-    <div className="w-full overflow-x-auto">
-      <table className="min-w-[1100px] w-full border-collapse text-sm">
-        <thead>
-          <tr className="border-b border-slate-200 bg-slate-50 text-left">
-            <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-slate-500">
-              #
-            </th>
+    <div className="tx-grid-container glass-card">
+      {/* Table Toolbar */}
+      <div className="tx-toolbar">
+        <div className="tx-toolbar-left">
+          <div className="tx-search-box">
+            <Search size={16} className="search-icon" />
+            <input 
+              type="text" 
+              placeholder="Search narration, reference, or date..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="tx-search-input"
+            />
+          </div>
 
-            <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-slate-500">
-              Date
-            </th>
-
-            <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-slate-500">
-              Description
-            </th>
-
-            <th className="px-4 py-3 text-right text-[10px] font-bold uppercase tracking-wider text-slate-500">
-              Previous Balance
-            </th>
-
-            <th className="px-4 py-3 text-right text-[10px] font-bold uppercase tracking-wider text-slate-500">
-              Debit
-            </th>
-
-            <th className="px-4 py-3 text-right text-[10px] font-bold uppercase tracking-wider text-slate-500">
-              Credit
-            </th>
-
-            <th className="px-4 py-3 text-right text-[10px] font-bold uppercase tracking-wider text-slate-500">
-              Current Balance
-            </th>
-
-            <th className="px-4 py-3 text-center text-[10px] font-bold uppercase tracking-wider text-slate-500">
-              Status
-            </th>
-
-            <th className="px-4 py-3 text-center text-[10px] font-bold uppercase tracking-wider text-slate-500">
-              Action
-            </th>
-          </tr>
-        </thead>
-
-        <tbody>
-          {transactions.map((transaction, index) => {
-            const flagged = Boolean(transaction.flagged);
-
-            return (
-              <tr
-                key={transaction.id || index}
-                className={`border-b border-slate-100 transition hover:bg-slate-50 ${flagged ? "bg-red-50/40" : "bg-white"
-                  }`}
+          <div className="tx-filter-pills">
+            <button 
+              className={`pill-btn ${filterType === 'all' ? 'active' : ''}`}
+              onClick={() => setFilterType('all')}
+            >
+              All ({transactions.length})
+            </button>
+            <button 
+              className={`pill-btn ${filterType === 'credit' ? 'active' : ''}`}
+              onClick={() => setFilterType('credit')}
+            >
+              Credits
+            </button>
+            <button 
+              className={`pill-btn ${filterType === 'debit' ? 'active' : ''}`}
+              onClick={() => setFilterType('debit')}
+            >
+              Debits
+            </button>
+            {flagCount > 0 && (
+              <button 
+                className={`pill-btn pill-flagged ${filterType === 'flagged' ? 'active' : ''}`}
+                onClick={() => setFilterType('flagged')}
               >
-                {/* LINE NUMBER */}
-                <td className="px-4 py-3 align-middle">
-                  <span className="font-bold text-slate-500">
-                    {transaction.lineNo || index + 1}
-                  </span>
-                </td>
+                ⚠️ Flagged ({flagCount})
+              </button>
+            )}
+          </div>
+        </div>
 
-                {/* DATE */}
-                <td className="px-4 py-3">
-                  <input
-                    type="text"
-                    value={transaction.date || ""}
-                    onChange={(event) =>
-                      onChange(
-                        transaction.id,
-                        "date",
-                        event.target.value
-                      )
-                    }
-                    className="w-[125px] rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
-                    placeholder="YYYY-MM-DD"
-                  />
-                </td>
+        <div className="tx-toolbar-right">
+          <button className="btn btn-secondary btn-sm" onClick={handleAddRow} disabled={isLocked}>
+            <Plus size={15} />
+            <span>Add Row</span>
+          </button>
+          {!isLocked ? (
+            <button className="btn btn-success btn-sm" onClick={handleApproveAndLock} style={{ backgroundColor: 'var(--color-success)', color: 'white' }}>
+              <Check size={15} />
+              <span>Approve & Lock</span>
+            </button>
+          ) : (
+            <button className="btn btn-primary btn-sm" onClick={onOpenExport}>
+              <Download size={15} />
+              <span>Export Verified Data</span>
+            </button>
+          )}
+        </div>
+      </div>
+      
+      {/* Analyst Note */}
+      <div style={{ padding: '0 20px 15px', display: 'flex', gap: '10px', alignItems: 'center' }}>
+        <FileText size={16} className="text-muted" />
+        <input 
+          type="text" 
+          placeholder="Add analyst note or observations here..." 
+          value={analystNote}
+          onChange={(e) => setAnalystNote(e.target.value)}
+          className="form-input"
+          style={{ flex: 1, padding: '8px 12px' }}
+          disabled={isLocked}
+        />
+        {isLocked && <span className="status-tag tag-active"><Check size={12} /> Approved & Locked</span>}
+      </div>
 
-                {/* DESCRIPTION */}
-                <td className="px-4 py-3">
-                  <input
-                    type="text"
-                    value={transaction.description || ""}
-                    onChange={(event) =>
-                      onChange(
-                        transaction.id,
-                        "description",
-                        event.target.value
-                      )
-                    }
-                    className="w-[250px] rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
-                    placeholder="Transaction description"
-                  />
-                </td>
-
-                {/* PREVIOUS BALANCE */}
-                <td className="px-4 py-3 text-right">
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={transaction.prevBalance ?? 0}
-                    onChange={(event) =>
-                      onChange(
-                        transaction.id,
-                        "prevBalance",
-                        event.target.value
-                      )
-                    }
-                    className="w-[130px] rounded-lg border border-slate-200 bg-white px-3 py-2 text-right text-xs outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
-                  />
-                </td>
-
-                {/* DEBIT */}
-                <td className="px-4 py-3 text-right">
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={transaction.debit ?? 0}
-                    onChange={(event) =>
-                      onChange(
-                        transaction.id,
-                        "debit",
-                        event.target.value
-                      )
-                    }
-                    className="w-[120px] rounded-lg border border-slate-200 bg-white px-3 py-2 text-right text-xs outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
-                  />
-                </td>
-
-                {/* CREDIT */}
-                <td className="px-4 py-3 text-right">
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={transaction.credit ?? 0}
-                    onChange={(event) =>
-                      onChange(
-                        transaction.id,
-                        "credit",
-                        event.target.value
-                      )
-                    }
-                    className="w-[120px] rounded-lg border border-slate-200 bg-white px-3 py-2 text-right text-xs outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
-                  />
-                </td>
-
-                {/* CURRENT BALANCE */}
-                <td className="px-4 py-3 text-right">
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={transaction.currBalance ?? 0}
-                    onChange={(event) =>
-                      onChange(
-                        transaction.id,
-                        "currBalance",
-                        event.target.value
-                      )
-                    }
-                    className={`w-[130px] rounded-lg border px-3 py-2 text-right text-xs font-semibold outline-none transition focus:ring-2 ${flagged
-                        ? "border-red-200 bg-red-50 text-red-700 focus:border-red-400 focus:ring-red-100"
-                        : "border-slate-200 bg-white text-slate-700 focus:border-indigo-400 focus:ring-indigo-100"
-                      }`}
-                  />
-
-                  <div className="mt-1 text-[10px] text-slate-400">
-  ₹{formatAmount(transaction.currBalance)}
-   </div>
-                </td>
-
-                {/* STATUS */}
-                <td className="px-4 py-3 text-center">
-                  {flagged ? (
-                    <span className="inline-flex items-center gap-1.5 rounded-full border border-red-200 bg-red-50 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-red-700">
-                      <AlertTriangle size={13} />
-                      Flagged
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-emerald-700">
-                      <CheckCircle2 size={13} />
-                      Valid
-                    </span>
-                  )}
-                </td>
-
-                {/* DELETE */}
-                <td className="px-4 py-3 text-center">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      onDelete(transaction.id)
-                    }
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-red-100 text-red-500 transition hover:bg-red-50 hover:text-red-700"
-                    title="Delete transaction"
-                  >
-                    <Trash2 size={15} />
-                  </button>
+      {/* Table Scroll Area */}
+      <div className="table-responsive">
+        <table className="yono-table">
+          <thead>
+            <tr>
+              <th style={{ width: '45px' }}>#</th>
+              <th style={{ width: '110px' }}>Date</th>
+              <th>Transaction Description</th>
+              <th style={{ width: '130px', textAlign: 'right' }}>Debit (₹)</th>
+              <th style={{ width: '130px', textAlign: 'right' }}>Credit (₹)</th>
+              <th style={{ width: '140px', textAlign: 'right' }}>Balance (₹)</th>
+              <th style={{ width: '80px', textAlign: 'center' }}>Audit</th>
+              <th style={{ width: '50px' }}></th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredTransactions.length === 0 ? (
+              <tr>
+                <td colSpan="8" className="empty-table-cell">
+                  <FileText size={32} className="text-muted" />
+                  <p>No transaction records found matching the active filter.</p>
                 </td>
               </tr>
-            );
-          })}
-        </tbody>
-      </table>
+            ) : (
+              filteredTransactions.map((tx, idx) => {
+                const originalIndex = tx._index !== undefined ? tx._index : idx;
+                const isFlagged = tx._isFlagged;
 
-      {transactions.length === 0 && (
-        <div className="flex min-h-[220px] items-center justify-center">
-          <p className="text-sm text-slate-400">
-            No transactions available.
-          </p>
-        </div>
-      )}
+                return (
+                  <tr 
+                    key={tx._id || `row-${originalIndex}-${tx.Date || tx.date || ''}-${tx.Description || tx.description || ''}`}
+                    className={`tx-row ${isFlagged ? 'row-flagged' : ''}`}
+                  >
+                    <td className="cell-index">{originalIndex + 1}</td>
+
+                    {/* Date */}
+                    <td className="cell-date">
+                      <input 
+                        type="text"
+                        value={tx.Date || tx.date || ''}
+                        onChange={(e) => handleCellChange(originalIndex, 'Date', e.target.value)}
+                        className="cell-input"
+                        disabled={isLocked}
+                      />
+                    </td>
+
+                    {/* Description */}
+                    <td className="cell-desc">
+                      <input 
+                        type="text"
+                        value={tx.Description || tx.description || ''}
+                        onChange={(e) => handleCellChange(originalIndex, 'Description', e.target.value)}
+                        className="cell-input"
+                        disabled={isLocked}
+                      />
+                    </td>
+
+                    {/* Debit */}
+                    <td className="cell-debit">
+                      <input 
+                        type="text"
+                        value={tx.Debit || tx.debit || ''}
+                        onChange={(e) => handleCellChange(originalIndex, 'Debit', e.target.value)}
+                        placeholder="—"
+                        className="cell-input text-right text-danger font-mono"
+                        disabled={isLocked}
+                      />
+                    </td>
+
+                    {/* Credit */}
+                    <td className="cell-credit">
+                      <input 
+                        type="text"
+                        value={tx.Credit || tx.credit || ''}
+                        onChange={(e) => handleCellChange(originalIndex, 'Credit', e.target.value)}
+                        placeholder="—"
+                        className="cell-input text-right text-success font-mono"
+                        disabled={isLocked}
+                      />
+                    </td>
+
+                    {/* Balance */}
+                    <td className="cell-balance">
+                      <input 
+                        type="text"
+                        value={tx.Balance || tx.balance || tx.currBalance || ''}
+                        onChange={(e) => handleCellChange(originalIndex, 'Balance', e.target.value)}
+                        className="cell-input text-right text-cyan font-mono font-bold"
+                        disabled={isLocked}
+                      />
+                    </td>
+
+                    {/* Status Badge */}
+                    <td className="cell-status">
+                      {isFlagged ? (
+                        <span 
+                          className="flag-pill" 
+                          title={`Calculation mismatch! Expected: ₹${tx._expectedBalance?.toFixed(2)}`}
+                        >
+                          <AlertCircle size={12} />
+                          <span>Mismatch</span>
+                        </span>
+                      ) : (
+                        <span className="pass-pill">
+                          <Check size={12} />
+                          <span>OK</span>
+                        </span>
+                      )}
+                    </td>
+
+                    {/* Actions */}
+                    <td className="cell-actions">
+                      <button 
+                        className="icon-btn delete-btn"
+                        onClick={() => handleDeleteRow(originalIndex)}
+                        title="Delete Row"
+                        disabled={isLocked}
+                        style={isLocked ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="tx-grid-footer">
+        <span className="footer-count">
+          Showing {filteredTransactions.length} of {transactions.length} records
+        </span>
+        <span className="footer-tip">
+          💡 Click on any cell to edit amounts inline. Math balances recalculate automatically.
+        </span>
+      </div>
     </div>
   );
-}
-
-export default TransactionGrid;
+};
