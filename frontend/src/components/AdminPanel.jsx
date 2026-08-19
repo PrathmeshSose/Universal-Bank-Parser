@@ -1,815 +1,372 @@
-import React, { useMemo, useState } from "react";
-import {
-  Users,
-  Settings,
-  Search,
-  Plus,
-  ShieldCheck,
-  CheckCircle2,
-  X,
-  Trash2,
+import React, { useState, useEffect } from 'react';
+import { 
+  Database, 
+  Users, 
+  Shield, 
+  Crown, 
+  Trash2, 
+  CheckCircle2, 
+  XCircle, 
+  AlertCircle, 
+  RefreshCw, 
   UserCheck,
-  UserX,
-} from "lucide-react";
+  Server,
+  Cloud,
+  Layers,
+  Activity
+} from 'lucide-react';
+import { getUsersApi, updateUserRoleApi, deleteUserApi, createUserApi } from '../services/api.js';
 
-function AdminPanel({
-  currentUser,
-  initialSection = "users",
-}) {
-  const [section, setSection] = useState(
-    initialSection === "system" ? "system" : "users"
-  );
+export const AdminPanel = ({ currentUser }) => {
+  const isSuperAdmin = currentUser?.role?.toLowerCase() === 'super_admin';
+  const isAdmin = ['admin', 'super_admin'].includes(currentUser?.role?.toLowerCase());
+  const [activeTab, setActiveTab] = useState('users');
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [actionMsg, setActionMsg] = useState('');
+  // Create User Modal state
+  const [showCreateUser, setShowCreateUser] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newEmail, setNewEmail] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [newRole, setNewRole] = useState('user');
+  const [createLoading, setCreateLoading] = useState(false);
+  const [createError, setCreateError] = useState('');
 
-  const [searchTerm, setSearchTerm] = useState("");
-
-  const [showAddUser, setShowAddUser] = useState(false);
-
-  const [message, setMessage] = useState("");
-
-  const [newUser, setNewUser] = useState({
-    name: "",
-    email: "",
-    role: "USER",
-  });
-
-  const [users, setUsers] = useState([
-    {
-      id: 1,
-      name: currentUser?.name || "Poornima Sahu",
-      email:
-        currentUser?.email || "poornima@universalbank.com",
-      role: "ADMIN",
-      status: "Active",
-    },
-    {
-      id: 2,
-      name: "Parser User",
-      email: "user@universalbank.com",
-      role: "USER",
-      status: "Active",
-    },
-  ]);
-
-  /* =====================================================
-     SECTION
-  ===================================================== */
-
-  const handleSectionChange = (nextSection) => {
-    setSection(nextSection);
-    setMessage("");
+  const fetchUsers = async () => {
+    setLoading(true);
+    try {
+      const data = await getUsersApi();
+      setUsers(data);
+    } catch (err) {
+      setUsers([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  /* =====================================================
-     SEARCH
-  ===================================================== */
+  useEffect(() => {
+    fetchUsers();
+  }, []);
 
-  const filteredUsers = useMemo(() => {
-    const query = searchTerm.trim().toLowerCase();
-
-    if (!query) {
-      return users;
+  const handleRoleChange = async (userId, currentRole) => {
+    const newRole = currentRole === 'admin' ? 'user' : 'admin';
+    try {
+      await updateUserRoleApi(userId, newRole);
+      setActionMsg(`Role updated to ${newRole.toUpperCase()}`);
+      setTimeout(() => setActionMsg(''), 3000);
+      fetchUsers();
+    } catch (err) {
+      alert(`Role change failed: ${err.message}`);
     }
+  };
 
-    return users.filter((user) => {
-      return (
-        user.name.toLowerCase().includes(query) ||
-        user.email.toLowerCase().includes(query) ||
-        user.role.toLowerCase().includes(query) ||
-        user.status.toLowerCase().includes(query)
-      );
-    });
-  }, [users, searchTerm]);
+  const handleToggleStatus = async (userId, currentStatus) => {
+    const newStatus = currentStatus === 'disabled' ? 'active' : 'disabled';
+    try {
+      await updateUserRoleApi(userId, undefined, newStatus);
+      setActionMsg(`User account status set to ${newStatus.toUpperCase()}`);
+      setTimeout(() => setActionMsg(''), 3000);
+      fetchUsers();
+    } catch (err) {
+      alert(`Status update failed: ${err.message}`);
+    }
+  };
 
-  /* =====================================================
-     USER ACTIONS
-  ===================================================== */
-
-  const handleAddUser = (event) => {
-    event.preventDefault();
-
-    const name = newUser.name.trim();
-    const email = newUser.email.trim().toLowerCase();
-
-    if (!name || !email) {
-      setMessage("Name and email are required.");
+  const handleDeleteUser = async (userId) => {
+    if (!isSuperAdmin) {
+      alert('Permission Denied: Only Super Admin can delete users.');
       return;
     }
-
-    const alreadyExists = users.some(
-      (user) => user.email.toLowerCase() === email
-    );
-
-    if (alreadyExists) {
-      setMessage("A user with this email already exists.");
+    if (!window.confirm('Are you sure you want to permanently delete this user from AWS S3?')) {
       return;
     }
-
-    const createdUser = {
-      id: Date.now(),
-      name,
-      email,
-      role: newUser.role,
-      status: "Active",
-    };
-
-    setUsers((current) => [...current, createdUser]);
-
-    setNewUser({
-      name: "",
-      email: "",
-      role: "USER",
-    });
-
-    setShowAddUser(false);
-    setMessage("User added successfully.");
-  };
-
-  const handleToggleUser = (id) => {
-    setUsers((current) =>
-      current.map((user) => {
-        if (user.id !== id) {
-          return user;
-        }
-
-        return {
-          ...user,
-          status:
-            user.status === "Active"
-              ? "Disabled"
-              : "Active",
-        };
-      })
-    );
-
-    setMessage("User status updated.");
-  };
-
-  const handleDeleteUser = (id) => {
-    if (id === 1) {
-      setMessage("The primary administrator cannot be deleted.");
-      return;
+    try {
+      await deleteUserApi(userId);
+      setActionMsg('User permanently deleted.');
+      setTimeout(() => setActionMsg(''), 3000);
+      fetchUsers();
+    } catch (err) {
+      alert(`Delete failed: ${err.message}`);
     }
-
-    setUsers((current) =>
-      current.filter((user) => user.id !== id)
-    );
-
-    setMessage("User deleted.");
   };
 
-  /* =====================================================
-     STATS
-  ===================================================== */
-
-  const activeUsers = users.filter(
-    (user) => user.status === "Active"
-  ).length;
-
-  /* =====================================================
-     RENDER
-  ===================================================== */
+  const handleCreateUser = async (e) => {
+    e.preventDefault();
+    setCreateError('');
+    setCreateLoading(true);
+    try {
+      await createUserApi(newName, newEmail, newPassword, newRole);
+      setActionMsg(`User '${newName}' created successfully!`);
+      setTimeout(() => setActionMsg(''), 3000);
+      setShowCreateUser(false);
+      setNewName(''); setNewEmail(''); setNewPassword(''); setNewRole('user');
+      fetchUsers();
+    } catch (err) {
+      setCreateError(err.message);
+    } finally {
+      setCreateLoading(false);
+    }
+  };
 
   return (
-    <div className="w-full">
-      {/* ===================================================
-          PAGE HEADER
-      =================================================== */}
+    <div className="admin-container animate-fade">
+      {/* Header Banner */}
+      <div className="admin-header-card glass-card">
+        <div className="admin-title-wrap">
+          {isSuperAdmin ? <Crown size={28} className="text-gold" /> : <Database size={28} className="text-cyan" />}
+          <div>
+            <h3>{isSuperAdmin ? '👑 Super Admin Master Control Hub' : '🛡️ System Administration Panel'}</h3>
+            <p>Role-Based Access Control (RBAC), User Directory & S3 Data Lake Monitor</p>
+          </div>
+        </div>
 
-      <div className="mb-6">
-        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-600">
-          Secure Administration
-        </p>
-
-        <h1 className="mt-2 text-3xl font-black tracking-tight text-slate-900">
-          Admin Panel
-        </h1>
-
-        <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
-          Manage application users, access and system
-          configuration.
-        </p>
+        <div className="admin-header-badges">
+          <span className={`admin-badge ${
+            isSuperAdmin 
+              ? 'admin-badge-super' 
+              : 'admin-badge-admin'
+          }`}>
+            {currentUser?.role?.toUpperCase() || 'ADMIN'}
+          </span>
+        </div>
       </div>
 
-      {/* ===================================================
-          MESSAGE
-      =================================================== */}
-
-      {message && (
-        <div className="mb-5 flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-          <CheckCircle2 size={17} />
-
-          <span>{message}</span>
-
-          <button
-            type="button"
-            onClick={() => setMessage("")}
-            className="ml-auto"
-          >
-            <X size={16} />
-          </button>
+      {actionMsg && (
+        <div className="alert-box alert-success animate-fade">
+          <CheckCircle2 size={16} />
+          <span>{actionMsg}</span>
         </div>
       )}
 
-      {/* ===================================================
-          SECTION SWITCHER
-      =================================================== */}
+      {/* Admin Nav Tabs */}
+      <div className="admin-tabs-row">
+        <button 
+          className={`btn ${activeTab === 'users' ? 'btn-primary' : 'btn-secondary'} btn-sm`}
+          onClick={() => setActiveTab('users')}
+        >
+          <Users size={15} />
+          <span>User Directory & RBAC</span>
+        </button>
+        <button 
+          className={`btn ${activeTab === 'system' ? 'btn-primary' : 'btn-secondary'} btn-sm`}
+          onClick={() => setActiveTab('system')}
+        >
+          <Server size={15} />
+          <span>System & RAM Health</span>
+        </button>
+      </div>
 
-      <section className="mb-6 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm">
-        <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-          {/* USERS */}
-          <button
-            type="button"
-            onClick={() => handleSectionChange("users")}
-            className={`flex items-center gap-3 rounded-xl px-5 py-4 text-left transition ${section === "users"
-                ? "bg-[#11152a] text-white shadow-md"
-                : "text-slate-700 hover:bg-slate-50"
-              }`}
-          >
-            <span
-              className={`flex h-9 w-9 items-center justify-center rounded-lg ${section === "users"
-                  ? "bg-white/10"
-                  : "bg-slate-100"
-                }`}
-            >
-              <Users size={17} />
-            </span>
-
-            <span>
-              <span className="block text-sm font-extrabold">
-                User Management
-              </span>
-
-              <span
-                className={`mt-0.5 block text-[11px] ${section === "users"
-                    ? "text-slate-400"
-                    : "text-slate-500"
-                  }`}
-              >
-                Manage users, roles and access
-              </span>
-            </span>
-          </button>
-
-          {/* SYSTEM */}
-          <button
-            type="button"
-            onClick={() => handleSectionChange("system")}
-            className={`flex items-center gap-3 rounded-xl px-5 py-4 text-left transition ${section === "system"
-                ? "bg-[#11152a] text-white shadow-md"
-                : "text-slate-700 hover:bg-slate-50"
-              }`}
-          >
-            <span
-              className={`flex h-9 w-9 items-center justify-center rounded-lg ${section === "system"
-                  ? "bg-white/10"
-                  : "bg-slate-100"
-                }`}
-            >
-              <Settings size={17} />
-            </span>
-
-            <span>
-              <span className="block text-sm font-extrabold">
-                System
-              </span>
-
-              <span
-                className={`mt-0.5 block text-[11px] ${section === "system"
-                    ? "text-slate-400"
-                    : "text-slate-500"
-                  }`}
-              >
-                API, security and processing
-              </span>
-            </span>
-          </button>
-        </div>
-      </section>
-
-      {/* ===================================================
-          USER MANAGEMENT
-      =================================================== */}
-
-      {section === "users" && (
-        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          {/* HEADER */}
-          <div className="border-b border-slate-200 p-5 md:p-6">
-            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-              <div>
-                <h2 className="text-xl font-extrabold text-slate-900">
-                  User Management
-                </h2>
-
-                <p className="mt-1 text-sm text-slate-500">
-                  Manage application users, roles and access.
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setMessage("");
-                  setShowAddUser(true);
-                }}
-                className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#11152a] px-4 py-2.5 text-xs font-bold text-white shadow-md transition hover:bg-indigo-700"
-              >
-                <Plus size={15} />
-                Add User
+      {/* TAB 1: User Directory & RBAC Management */}
+      {activeTab === 'users' && (
+        <div className="glass-card admin-users-table-card">
+          <div className="table-header-row">
+            <h4>Registered Enterprise Users ({users.length})</h4>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button className="btn btn-primary btn-sm" onClick={() => setShowCreateUser(true)}>
+                <Users size={14} />
+                <span>+ Create User</span>
               </button>
-            </div>
-
-            {/* SEARCH */}
-            <div className="mt-5">
-              <div className="relative">
-                <Search
-                  size={16}
-                  className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
-                />
-
-                <input
-                  type="text"
-                  value={searchTerm}
-                  onChange={(event) =>
-                    setSearchTerm(event.target.value)
-                  }
-                  placeholder="Search users"
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-11 pr-4 text-sm outline-none transition placeholder:text-slate-400 focus:border-indigo-400 focus:bg-white focus:ring-2 focus:ring-indigo-100"
-                />
-              </div>
+              <button className="btn btn-secondary btn-sm" onClick={fetchUsers} disabled={loading}>
+                <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+                <span>Refresh</span>
+              </button>
             </div>
           </div>
 
-          {/* USER TABLE */}
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[760px] border-collapse">
+          <div className="table-responsive">
+            <table className="yono-table">
               <thead>
-                <tr className="border-b border-slate-200 bg-slate-50 text-left">
-                  <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-[0.15em] text-slate-500">
-                    User
-                  </th>
-
-                  <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-[0.15em] text-slate-500">
-                    Role
-                  </th>
-
-                  <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-[0.15em] text-slate-500">
-                    Status
-                  </th>
-
-                  <th className="px-6 py-4 text-right text-[10px] font-bold uppercase tracking-[0.15em] text-slate-500">
-                    Actions
-                  </th>
+                <tr>
+                  <th>User Name</th>
+                  <th>Email</th>
+                  <th>RBAC Role</th>
+                  <th>Status</th>
+                  <th style={{ textAlign: 'right' }}>Actions</th>
                 </tr>
               </thead>
-
               <tbody>
-                {filteredUsers.length > 0 ? (
-                  filteredUsers.map((user) => (
-                    <tr
-                      key={user.id}
-                      className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50/70"
-                    >
-                      {/* USER */}
-                      <td className="px-6 py-5">
-                        <div className="flex items-center gap-3">
-                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-xs font-extrabold text-indigo-700">
-                            {user.name
-                              .charAt(0)
-                              .toUpperCase()}
-                          </div>
+                {users.map((u) => {
+                  const roleNormalized = (u.role || '').toLowerCase();
+                  const isUserSuperAdmin = roleNormalized === 'super_admin';
 
-                          <div>
-                            <p className="text-sm font-bold text-slate-800">
-                              {user.name}
-                            </p>
-
-                            <p className="mt-0.5 text-xs text-slate-400">
-                              {user.email}
-                            </p>
-                          </div>
-                        </div>
-                      </td>
-
-                      {/* ROLE */}
-                      <td className="px-6 py-5">
+                  return (
+                    <tr key={u.id}>
+                      <td className="font-bold">{u.name}</td>
+                      <td className="font-mono text-sm">{u.email}</td>
+                      <td>
+                        {/* 6.2 Role Badge styling per handoff spec */}
                         <span
-                          className={`inline-flex rounded-full px-3 py-1 text-[10px] font-extrabold ${user.role === "ADMIN"
-                              ? "bg-violet-50 text-violet-700"
-                              : "bg-blue-50 text-blue-700"
-                            }`}
+                          className={`admin-badge ${
+                            roleNormalized === 'super_admin'
+                              ? 'admin-badge-super'
+                              : roleNormalized === 'admin'
+                              ? 'admin-badge-admin'
+                              : 'admin-badge-user'
+                          }`}
                         >
-                          {user.role}
+                          {u.role?.toUpperCase()}
                         </span>
                       </td>
-
-                      {/* STATUS */}
-                      <td className="px-6 py-5">
-                        <span className="inline-flex items-center gap-2 text-xs font-semibold text-slate-600">
-                          <span
-                            className={`h-2 w-2 rounded-full ${user.status === "Active"
-                                ? "bg-emerald-500"
-                                : "bg-slate-400"
-                              }`}
-                          />
-
-                          {user.status}
+                      <td>
+                        <span className={`status-tag ${u.status === 'disabled' ? 'tag-disabled' : 'tag-active'}`}>
+                          {u.status === 'disabled' ? 'Disabled' : 'Active'}
                         </span>
                       </td>
-
-                      {/* ACTIONS */}
-                      <td className="px-6 py-5">
-                        <div className="flex justify-end gap-2">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              handleToggleUser(user.id)
-                            }
-                            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-[10px] font-bold text-slate-600 transition hover:bg-slate-100"
-                          >
-                            {user.status === "Active" ? (
-                              <UserX size={13} />
-                            ) : (
-                              <UserCheck size={13} />
-                            )}
-
-                            {user.status === "Active"
-                              ? "Disable"
-                              : "Enable"}
-                          </button>
-
-                          {user.id !== 1 && (
+                      <td className="cell-actions-right">
+                        {!isUserSuperAdmin && (
+                          <div className="action-buttons-group">
+                            {/* Toggle Role (user <-> admin) */}
                             <button
-                              type="button"
-                              onClick={() =>
-                                handleDeleteUser(user.id)
-                              }
-                              className="inline-flex items-center gap-1.5 rounded-lg border border-red-100 px-3 py-2 text-[10px] font-bold text-red-500 transition hover:bg-red-50"
+                              className="btn btn-secondary btn-sm"
+                              onClick={() => handleRoleChange(u.id, u.role)}
+                              title="Toggle between User and Admin"
                             >
-                              <Trash2 size={13} />
-                              Delete
+                              <UserCheck size={13} />
+                              <span>{u.role === 'admin' ? 'Demote to User' : 'Promote to Admin'}</span>
                             </button>
-                          )}
-                        </div>
+
+                            {/* Enable/Disable Account */}
+                            <button
+                              className={`btn btn-sm ${u.status === 'disabled' ? 'btn-success' : 'btn-secondary'}`}
+                              onClick={() => handleToggleStatus(u.id, u.status)}
+                            >
+                              {u.status === 'disabled' ? 'Enable' : 'Disable'}
+                            </button>
+
+                            {/* Delete User (Super Admin Only per spec) */}
+                            {isSuperAdmin && (
+                              <button
+                                className="icon-btn delete-btn"
+                                onClick={() => handleDeleteUser(u.id)}
+                                title="Permanently Delete User (Super Admin Only)"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            )}
+                          </div>
+                        )}
+                        {isUserSuperAdmin && (
+                          <span className="text-muted text-xs font-semibold">Master Account</span>
+                        )}
                       </td>
                     </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td
-                      colSpan="4"
-                      className="px-6 py-12 text-center"
-                    >
-                      <p className="text-sm font-semibold text-slate-500">
-                        No users found.
-                      </p>
-                    </td>
-                  </tr>
-                )}
+                  );
+                })}
               </tbody>
             </table>
           </div>
-
-          {/* SUMMARY */}
-          <div className="border-t border-slate-200 bg-slate-50 px-6 py-4">
-            <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-slate-500">
-              <span>
-                Total users:{" "}
-                <strong className="text-slate-800">
-                  {users.length}
-                </strong>
-              </span>
-
-              <span>
-                Active users:{" "}
-                <strong className="text-emerald-600">
-                  {activeUsers}
-                </strong>
-              </span>
-
-              <span>
-                Current session:{" "}
-                <strong className="text-slate-800">
-                  {currentUser?.name || "User"}
-                </strong>
-              </span>
-            </div>
-          </div>
-        </section>
-      )}
-
-      {/* ===================================================
-          SYSTEM
-      =================================================== */}
-
-      {section === "system" && (
-        <div className="space-y-5">
-          {/* STATUS CARDS */}
-          <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
-            {/* SYSTEM */}
-            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-slate-500">
-                    System Status
-                  </p>
-
-                  <h3 className="mt-2 text-xl font-extrabold text-slate-900">
-                    Operational
-                  </h3>
-                </div>
-
-                <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600">
-                  <CheckCircle2 size={18} />
-                </span>
-              </div>
-
-              <p className="mt-3 text-xs leading-5 text-slate-500">
-                Core parser services are available and ready
-                for document processing.
-              </p>
-            </div>
-
-            {/* API */}
-            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-slate-500">
-                    API / Backend
-                  </p>
-
-                  <h3 className="mt-2 text-xl font-extrabold text-slate-900">
-                    Connected
-                  </h3>
-                </div>
-
-                <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
-                  <Settings size={18} />
-                </span>
-              </div>
-
-              <p className="mt-3 text-xs leading-5 text-slate-500">
-                Backend API is configured for statement
-                processing.
-              </p>
-            </div>
-
-            {/* STORAGE */}
-            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-slate-500">
-                    Storage Policy
-                  </p>
-
-                  <h3 className="mt-2 text-xl font-extrabold text-slate-900">
-                    RAM Only
-                  </h3>
-                </div>
-
-                <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600">
-                  <ShieldCheck size={18} />
-                </span>
-              </div>
-
-              <p className="mt-3 text-xs leading-5 text-slate-500">
-                Uploaded statements are processed temporarily
-                and are not permanently stored.
-              </p>
-            </div>
-          </div>
-
-          {/* SECURITY */}
-          <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-            <div className="flex items-start gap-4">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#11152a] text-white">
-                <ShieldCheck size={20} />
-              </div>
-
-              <div>
-                <h2 className="text-lg font-extrabold text-slate-900">
-                  Security &amp; Compliance
-                </h2>
-
-                <p className="mt-1 text-sm text-slate-500">
-                  Current application security and processing
-                  controls.
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">
-              {[
-                "Zero permanent document storage",
-                "AI extraction engine enabled",
-                "Transaction validation enabled",
-                "Role-based administration enabled",
-              ].map((item) => (
-                <div
-                  key={item}
-                  className="flex items-center gap-3 rounded-xl border border-slate-100 bg-slate-50 px-4 py-4"
-                >
-                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
-                    <CheckCircle2 size={14} />
-                  </span>
-
-                  <span className="text-xs font-semibold text-slate-600">
-                    {item}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          {/* SYSTEM CONFIGURATION */}
-          <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-            <div className="mb-5">
-              <h2 className="text-lg font-extrabold text-slate-900">
-                System Configuration
-              </h2>
-
-              <p className="mt-1 text-sm text-slate-500">
-                Current processing configuration.
-              </p>
-            </div>
-
-            <div className="divide-y divide-slate-100 rounded-xl border border-slate-200">
-              <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p className="text-sm font-bold text-slate-800">
-                    Backend API
-                  </p>
-
-                  <p className="mt-1 text-xs text-slate-400">
-                    API connection used for statement processing.
-                  </p>
-                </div>
-
-                <span className="w-fit rounded-full bg-emerald-50 px-3 py-1 text-[10px] font-extrabold text-emerald-700">
-                  CONNECTED
-                </span>
-              </div>
-
-              <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p className="text-sm font-bold text-slate-800">
-                    Maximum Upload Size
-                  </p>
-
-                  <p className="mt-1 text-xs text-slate-400">
-                    Maximum supported statement size.
-                  </p>
-                </div>
-
-                <span className="w-fit rounded-full bg-slate-100 px-3 py-1 text-[10px] font-extrabold text-slate-700">
-                  5 MB
-                </span>
-              </div>
-
-              <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p className="text-sm font-bold text-slate-800">
-                    Supported Documents
-                  </p>
-
-                  <p className="mt-1 text-xs text-slate-400">
-                    Accepted statement formats.
-                  </p>
-                </div>
-
-                <span className="w-fit rounded-full bg-blue-50 px-3 py-1 text-[10px] font-extrabold text-blue-700">
-                  PDF · PNG · JPG
-                </span>
-              </div>
-
-              <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p className="text-sm font-bold text-slate-800">
-                    Transaction Validation
-                  </p>
-
-                  <p className="mt-1 text-xs text-slate-400">
-                    Mathematical consistency checks.
-                  </p>
-                </div>
-
-                <span className="w-fit rounded-full bg-emerald-50 px-3 py-1 text-[10px] font-extrabold text-emerald-700">
-                  ENABLED
-                </span>
-              </div>
-            </div>
-          </section>
         </div>
       )}
 
-      {/* ===================================================
-          ADD USER MODAL
-      =================================================== */}
+      {/* TAB 2: System Health & Zero Storage RAM Monitor */}
+      {activeTab === 'system' && (
+        <div className="system-health-grid">
+          <div className="glass-card health-metric-box">
+            <div className="metric-icon-circle icon-cyan">
+              <Cloud size={24} />
+            </div>
+            <h4>AWS S3 Serverless Database</h4>
+            <p className="font-mono text-cyan">Bucket: banking-bucket-first (us-east-1)</p>
+            <span className="health-badge-pass">Operational • S3 JSON Lake</span>
+          </div>
 
-      {showAddUser && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white shadow-2xl">
-            <div className="border-b border-slate-200 px-6 py-5">
-              <div className="flex items-center justify-between">
+          <div className="glass-card health-metric-box">
+            <div className="metric-icon-circle icon-blue">
+              <Shield size={24} />
+            </div>
+            <h4>Zero Storage RAM Policy</h4>
+            <p>Multer memory storage stream active. 0 bytes saved to server disk.</p>
+            <span className="health-badge-pass">100% Compliant</span>
+          </div>
+
+          <div className="glass-card health-metric-box">
+            <div className="metric-icon-circle icon-gold">
+              <Activity size={24} />
+            </div>
+            <h4>AI Extraction Engine Status</h4>
+            <p>Amazon Bedrock (Nova Lite) with Groq OCR auto-fallback pipeline.</p>
+            <span className="health-badge-pass">Connected & Ready</span>
+          </div>
+        </div>
+      )}
+
+      {/* ── Create User Modal ── */}
+      {showCreateUser && (
+        <div className="modal-overlay" onClick={() => setShowCreateUser(false)}>
+          <div className="modal-content glass-card animate-fade" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div className="modal-title-group">
+                <Users size={22} className="text-cyan" />
                 <div>
-                  <h3 className="text-lg font-extrabold text-slate-900">
-                    Add User
-                  </h3>
-
-                  <p className="mt-1 text-xs text-slate-500">
-                    Create a new application user.
-                  </p>
+                  <h3>Create New User</h3>
+                  <p>{isSuperAdmin ? 'Super Admin: can create User or Admin accounts' : 'Admin: can create User or Admin accounts'}</p>
                 </div>
-
-                <button
-                  type="button"
-                  onClick={() => setShowAddUser(false)}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-                >
-                  <X size={17} />
-                </button>
               </div>
+              <button className="icon-btn" onClick={() => setShowCreateUser(false)}>✕</button>
             </div>
 
-            <form
-              onSubmit={handleAddUser}
-              className="space-y-4 p-6"
-            >
-              {/* NAME */}
-              <div>
-                <label className="mb-1.5 block text-xs font-bold text-slate-700">
-                  Name
-                </label>
+            {createError && (
+              <div className="alert-box alert-danger">
+                <AlertCircle size={15} />
+                <span>{createError}</span>
+              </div>
+            )}
 
+            <form onSubmit={handleCreateUser}>
+              <div className="form-group">
+                <label>Full Name</label>
                 <input
                   type="text"
-                  value={newUser.name}
-                  onChange={(event) =>
-                    setNewUser((current) => ({
-                      ...current,
-                      name: event.target.value,
-                    }))
-                  }
-                  placeholder="Enter user name"
-                  className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+                  className="form-input"
+                  placeholder="e.g. Ramesh Kumar"
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  required
                 />
               </div>
-
-              {/* EMAIL */}
-              <div>
-                <label className="mb-1.5 block text-xs font-bold text-slate-700">
-                  Email
-                </label>
-
+              <div className="form-group">
+                <label>Work Email</label>
                 <input
                   type="email"
-                  value={newUser.email}
-                  onChange={(event) =>
-                    setNewUser((current) => ({
-                      ...current,
-                      email: event.target.value,
-                    }))
-                  }
-                  placeholder="user@universalbank.com"
-                  className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+                  className="form-input"
+                  placeholder="e.g. analyst@bank.co.in"
+                  value={newEmail}
+                  onChange={(e) => setNewEmail(e.target.value)}
+                  required
                 />
               </div>
-
-              {/* ROLE */}
-              <div>
-                <label className="mb-1.5 block text-xs font-bold text-slate-700">
-                  Role
-                </label>
-
-                <select
-                  value={newUser.role}
-                  onChange={(event) =>
-                    setNewUser((current) => ({
-                      ...current,
-                      role: event.target.value,
-                    }))
-                  }
-                  className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
-                >
-                  <option value="USER">USER</option>
-                  <option value="ADMIN">ADMIN</option>
-                </select>
+              <div className="form-group">
+                <label>Temporary Password</label>
+                <input
+                  type="password"
+                  className="form-input"
+                  placeholder="Set a strong password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  required
+                />
               </div>
-
-              {/* ACTIONS */}
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowAddUser(false)}
-                  className="rounded-lg border border-slate-200 px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50"
-                >
+              {isAdmin && (
+                <div className="form-group">
+                  <label>Assign Role</label>
+                  <select
+                    className="form-input"
+                    value={newRole}
+                    onChange={(e) => setNewRole(e.target.value)}
+                  >
+                    <option value="user">👤 User (Analyst)</option>
+                    <option value="admin">🛡️ Admin (Manager)</option>
+                  </select>
+                </div>
+              )}
+              <div className="modal-footer" style={{ gap: '10px' }}>
+                <button type="button" className="btn btn-secondary" onClick={() => setShowCreateUser(false)}>
                   Cancel
                 </button>
-
-                <button
-                  type="submit"
-                  className="rounded-lg bg-[#11152a] px-4 py-2.5 text-xs font-bold text-white hover:bg-indigo-700"
-                >
-                  Add User
+                <button type="submit" className="btn btn-primary" disabled={createLoading}>
+                  {createLoading ? <RefreshCw size={15} className="animate-spin" /> : <UserCheck size={15} />}
+                  <span>{createLoading ? 'Creating...' : 'Create Account'}</span>
                 </button>
               </div>
             </form>
@@ -818,6 +375,4 @@ function AdminPanel({
       )}
     </div>
   );
-}
-
-export default AdminPanel;
+};

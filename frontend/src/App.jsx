@@ -1,1363 +1,230 @@
+import React, { useState, useEffect } from 'react';
+import { Header } from './components/Header.jsx';
+import { Sidebar } from './components/Sidebar.jsx';
+import { CorporateOverview } from './components/CorporateOverview.jsx';
+import { FileUpload } from './components/FileUpload.jsx';
+import { DocumentViewer } from './components/DocumentViewer.jsx';
+import { TransactionGrid } from './components/TransactionGrid.jsx';
+import { ValidationCard } from './components/ValidationCard.jsx';
+import { ReportsPage } from './components/ReportsPage.jsx';
+import { AdminPanel } from './components/AdminPanel.jsx';
+import { Login } from './components/Login.jsx';
+import { StatementHistory } from './components/StatementHistory.jsx';
+import { auditTransactions } from './services/mathValidator.js';
+import { getCurrentUser, clearAuth, checkHealthApi } from './services/api.js';
+import './App.css';
 
-import { useEffect, useMemo, useState } from "react";
+// Default initial sample statement to immediately demo functionality
+const INITIAL_DEMO_TRANSACTIONS = [];
 
-import {
-  ShieldCheck,
-  Upload,
-  Download,
-  X,
-  AlertTriangle,
-  CheckCircle2,
-  Plus,
-  Search,
-  FileText,
-  Eye,
-} from "lucide-react";
+export function App() {
+  const [theme, setTheme] = useState(() => localStorage.getItem('yono-theme') || 'light');
+  const [activeTab, setActiveTab] = useState('dashboard'); // 'dashboard', 'extractor', 'verification', 'admin'
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [activeBank, setActiveBank] = useState('HDFC');
+  const [customBankName, setCustomBankName] = useState('');
+  
+  // Auth State
+  const [currentUser, setCurrentUser] = useState(null);
+  const [isAuthOpen, setIsAuthOpen] = useState(false);
+  
+  // Data Extraction State
+  const [uploadedFile, setUploadedFile] = useState(null);
+  const [s3DownloadUrl, setS3DownloadUrl] = useState('');
+  const [transactions, setTransactions] = useState(INITIAL_DEMO_TRANSACTIONS);
+  const [apiOnline, setApiOnline] = useState(true);
+  const [activeRecordId, setActiveRecordId] = useState(null);
+  // BUG-C2 FIX: Track uploads to trigger Dashboard refresh
+  const [uploadCount, setUploadCount] = useState(0);
+  // BUG-F3 FIX: Track whether the active record is already locked
+  const [isRecordLocked, setIsRecordLocked] = useState(false);
 
-import {
-  checkBackendHealthApi,
-  uploadBankStatementApi,
-  exportToGoogleSheetsApi,
-  getMockSbiTransactions,
-  logoutApi,
-} from "./services/api";
+  // Apply Theme
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('yono-theme', theme);
+  }, [theme]);
 
-import Login from "./components/Login";
-import Register from "./components/Register";
-
-import Header from "./components/Header";
-import Sidebar from "./components/Sidebar";
-import AdminPanel from "./components/AdminPanel";
-import TransactionGrid from "./components/TransactionGrid";
-import DocumentViewer from "./components/DocumentViewer";
-import GoogleSheetsModal from "./components/GoogleSheetsModal";
-
-const MAX_FILE_SIZE = 5 * 1024 * 1024;
-
-function App() {
-  /* =========================================================
-     AUTHENTICATION
-  ========================================================= */
-
-  const [currentUser, setCurrentUser] = useState(() => {
-    try {
-      const savedUser = localStorage.getItem("ubp_user");
-      return savedUser ? JSON.parse(savedUser) : null;
-    } catch (error) {
-      console.error("Unable to restore user session:", error);
-      return null;
+  // Load Saved Auth Session & Check Health
+  useEffect(() => {
+    const savedUser = getCurrentUser();
+    if (savedUser) {
+      setCurrentUser(savedUser);
+    } else {
+      // Default to Master Super Admin for immediate testing convenience if desired
+      // or show login modal
     }
-  });
 
-  const [authMode, setAuthMode] = useState("login");
+    const checkHealth = async () => {
+      const res = await checkHealthApi();
+      setApiOnline(res.status === 'success');
+    };
+    checkHealth();
+  }, []);
 
-  const handleLogin = (user) => {
-    setCurrentUser(user);
-  };
+  // Run Real-time Mathematical Validation Engine
+  const { auditedTransactions, stats, flagCount } = auditTransactions(transactions);
 
-  const handleRegister = (user) => {
-    setCurrentUser(user);
+  // Upload handler
+  const handleUploadSuccess = (response, file) => {
+    setUploadedFile(file);
+    if (response.downloadUrl) {
+      setS3DownloadUrl(response.downloadUrl);
+    }
+    if (response.recordId) {
+      setActiveRecordId(response.recordId);
+    }
+    // BUG-F3 FIX: New upload is always unlocked
+    setIsRecordLocked(false);
+    
+    const extractedData = response.data?.transactions || response.data || response.transactions || [];
+    if (Array.isArray(extractedData) && extractedData.length > 0) {
+      setTransactions(extractedData);
+    }
+    // BUG-C2 FIX: Increment uploadCount so Dashboard re-fetches stats
+    setUploadCount(prev => prev + 1);
+    setActiveTab('verification');
   };
 
   const handleLogout = () => {
-    try {
-      logoutApi();
-    } catch (error) {
-      console.error("Logout failed:", error);
-    }
-
-    localStorage.removeItem("ubp_user");
-    localStorage.removeItem("ubp_token");
-
+    clearAuth();
     setCurrentUser(null);
-    setAuthMode("login");
   };
 
-  /* =========================================================
-     NAVIGATION
-  ========================================================= */
-
-  const [activeTab, setActiveTab] = useState("parser");
-  const [adminSection, setAdminSection] = useState("users");
-
-  /* =========================================================
-     BACKEND
-  ========================================================= */
-
-  const [backendConnected, setBackendConnected] = useState(false);
-
-  /* =========================================================
-     FILE
-  ========================================================= */
-
-  const [file, setFile] = useState(null);
-  const [previewUrl, setPreviewUrl] = useState("");
-  const [dragActive, setDragActive] = useState(false);
-  const [uploading, setUploading] = useState(false);
-
-  /* =========================================================
-     TRANSACTIONS
-  ========================================================= */
-
-  const [transactions, setTransactions] = useState([]);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [filter, setFilter] = useState("all");
-  const [selectedBank, setSelectedBank] = useState("HDFC");
-
-  /* =========================================================
-     MODALS
-  ========================================================= */
-
-  const [showPdf, setShowPdf] = useState(false);
-  const [showExport, setShowExport] = useState(false);
-
-  /* =========================================================
-     MESSAGES
-  ========================================================= */
-
-  const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
-
-  /* =========================================================
-     BACKEND HEALTH CHECK
-  ========================================================= */
-
-  useEffect(() => {
-    if (!currentUser) {
-      setBackendConnected(false);
-      return undefined;
-    }
-
-    let mounted = true;
-
-    const checkBackend = async () => {
-      try {
-        const result = await checkBackendHealthApi();
-
-        if (!mounted) {
-          return;
-        }
-
-        setBackendConnected(Boolean(result?.connected));
-      } catch (err) {
-        console.error("Backend health check failed:", err);
-
-        if (mounted) {
-          setBackendConnected(false);
-        }
-      }
-    };
-
-    checkBackend();
-
-    const interval = setInterval(checkBackend, 10000);
-
-    return () => {
-      mounted = false;
-      clearInterval(interval);
-    };
-  }, [currentUser]);
-
-  /* =========================================================
-     PREVIEW URL CLEANUP
-  ========================================================= */
-
-  useEffect(() => {
-    return () => {
-      if (previewUrl) {
-        URL.revokeObjectURL(previewUrl);
-      }
-    };
-  }, [previewUrl]);
-
-  /* =========================================================
-     FILE VALIDATION
-  ========================================================= */
-
-  const validateFile = (selectedFile) => {
-    if (!selectedFile) {
-      return "Please select a file.";
-    }
-
-    if (selectedFile.size > MAX_FILE_SIZE) {
-      return "File must be 5 MB or smaller.";
-    }
-
-    const fileName = selectedFile.name?.toLowerCase() || "";
-
-    const validExtension =
-      fileName.endsWith(".pdf") ||
-      fileName.endsWith(".png") ||
-      fileName.endsWith(".jpg") ||
-      fileName.endsWith(".jpeg");
-
-    const validMimeType = [
-      "application/pdf",
-      "image/png",
-      "image/jpeg",
-      "image/jpg",
-    ].includes(selectedFile.type);
-
-    if (!validExtension && !validMimeType) {
-      return "Only PDF, PNG and JPG files are supported.";
-    }
-
-    return null;
+  const handleLoginSuccess = (user) => {
+    setCurrentUser(user);
+    setIsAuthOpen(false);
   };
 
-  /* =========================================================
-     HANDLE FILE
-  ========================================================= */
-
-  const handleFile = (selectedFile) => {
-    setError("");
-    setMessage("");
-
-    const validationError = validateFile(selectedFile);
-
-    if (validationError) {
-      setError(validationError);
-      return;
-    }
-
-    if (previewUrl) {
-      URL.revokeObjectURL(previewUrl);
-    }
-
-    const objectUrl = URL.createObjectURL(selectedFile);
-
-    /*
-      IMPORTANT:
-      Selecting a NEW PDF immediately clears the old table.
-      Therefore old/demo data can never remain attached to
-      the newly selected PDF.
-    */
-
-    setFile(selectedFile);
-    setPreviewUrl(objectUrl);
-    setTransactions([]);
-    setFilter("all");
-    setSearchTerm("");
-    setShowPdf(false);
-  };
-
-  /* =========================================================
-     FILE INPUT
-  ========================================================= */
-
-  const handleInputChange = (event) => {
-    const selectedFile = event.target.files?.[0];
-
-    if (selectedFile) {
-      handleFile(selectedFile);
-    }
-
-    event.target.value = "";
-  };
-
-  /* =========================================================
-     DRAG & DROP
-  ========================================================= */
-
-  const handleDragOver = (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    setDragActive(true);
-  };
-
-  const handleDragLeave = (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    setDragActive(false);
-  };
-
-  const handleDrop = (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-
-    setDragActive(false);
-
-    const droppedFile = event.dataTransfer.files?.[0];
-
-    if (droppedFile) {
-      handleFile(droppedFile);
-    }
-  };
-
-  /* =========================================================
-     REMOVE FILE
-  ========================================================= */
-
-  const removeFile = () => {
-    if (previewUrl) {
-      URL.revokeObjectURL(previewUrl);
-    }
-
-    setFile(null);
-    setPreviewUrl("");
-    setTransactions([]);
-    setShowPdf(false);
-    setMessage("");
-    setError("");
-    setSearchTerm("");
-    setFilter("all");
-  };
-
-  /* =========================================================
-     NUMBER HELPER
-  ========================================================= */
-
-  const numberValue = (value) => {
-    if (
-      value === null ||
-      value === undefined ||
-      value === ""
-    ) {
-      return 0;
-    }
-
-    const cleaned = String(value)
-      .replace(/₹/g, "")
-      .replace(/,/g, "")
-      .replace(/\s/g, "")
-      .trim();
-
-    const number = Number(cleaned);
-
-    return Number.isFinite(number) ? number : 0;
-  };
-
-  /* =========================================================
-     NORMALIZE TRANSACTIONS
-  ========================================================= */
-
-  const normalizeTransactions = (data) => {
-    if (!Array.isArray(data)) {
-      return [];
-    }
-
-    return data.map((item, index) => ({
-      id:
-        item?.id ??
-        item?._id ??
-        `tx-${Date.now()}-${index}`,
-
-      lineNo:
-        item?.lineNo ??
-        item?.line ??
-        item?.lineNumber ??
-        index + 1,
-
-      date:
-        item?.date ??
-        item?.Date ??
-        item?.transactionDate ??
-        "",
-
-      description:
-        item?.description ??
-        item?.Description ??
-        item?.narration ??
-        item?.Narration ??
-        "",
-
-      prevBalance: numberValue(
-        item?.prevBalance ??
-          item?.previousBalance ??
-          item?.["Previous Balance"] ??
-          item?.openingBalance
-      ),
-
-      debit: numberValue(
-        item?.debit ??
-          item?.Debit ??
-          item?.withdrawal ??
-          item?.Withdrawal ??
-          item?.debitAmount
-      ),
-
-      credit: numberValue(
-        item?.credit ??
-          item?.Credit ??
-          item?.deposit ??
-          item?.Deposit ??
-          item?.creditAmount
-      ),
-
-      currBalance: numberValue(
-        item?.currBalance ??
-          item?.currentBalance ??
-          item?.balance ??
-          item?.Balance ??
-          item?.closingBalance
-      ),
-
-      flagged:
-        item?.flagged === true ||
-        item?.isValid === false ||
-        item?.valid === false ||
-        item?.validationStatus === "invalid",
-    }));
-  };
-
-  /* =========================================================
-     REAL PDF UPLOAD
-     
-     THIS IS THE ONLY FUNCTION THAT PROCESSES A REAL PDF.
-     
-     THERE IS NO DEMO FALLBACK HERE.
-  ========================================================= */
-
-const handleUpload = async () => {
-  if (!file) {
-    setError("Please select a bank statement first.");
-    return;
-  }
-
-  if (!backendConnected) {
-    setError(
-      "Backend server is offline (http://localhost:5000). Please start the backend to process uploaded statements."
-    );
-    setTransactions([]);
-    return;
-  }
-
-  setUploading(true);
-  setError("");
-  setMessage("");
-
-  try {
-    const result = await uploadBankStatementApi(
-      file,
-      selectedBank
-    );
-
-    const extracted =
-      result?.transactions ??
-      result?.data?.transactions ??
-      result?.data ??
-      [];
-
-    const normalized =
-      normalizeTransactions(extracted);
-
-    if (normalized.length > 0) {
-      setTransactions(normalized);
-
-      setMessage(
-        `${normalized.length} transaction${
-          normalized.length === 1 ? "" : "s"
-        } extracted successfully.`
-      );
-    } else {
-      setTransactions([]);
-      setError(
-        "No transactions were extracted from the uploaded statement."
-      );
-    }
-  } catch (err) {
-    console.error("Statement upload failed:", err);
-
-    setTransactions([]);
-    setError(
-      err?.message ||
-      "Unable to process the bank statement."
-    );
-  } finally {
-    setUploading(false);
-  }
-};
-
-  /* =========================================================
-     DEMO DATA
-     
-     These functions ONLY run if the user manually clicks
-     "Load Demo" or "Clean Demo".
-  ========================================================= */
-
-  const loadDemoData = () => {
-    try {
-      const demo = getMockSbiTransactions();
-      const normalized = normalizeTransactions(demo);
-
-      setTransactions(normalized);
-      setFilter("all");
-      setSearchTerm("");
-      setError("");
-
-      setMessage(
-        "Demo statement loaded manually."
-      );
-    } catch (err) {
-      console.error("Demo data error:", err);
-
-      setError(
-        "Unable to load demo transaction data."
-      );
-    }
-  };
-
-  /* =========================================================
-     CLEAN DEMO
-  ========================================================= */
-
-  const loadCleanDemoData = () => {
-    const clean = [
-      {
-        id: "clean-1",
-        lineNo: 1,
-        date: "2026-07-01",
-        description: "SALARY CREDIT",
-        prevBalance: 50000,
-        debit: 0,
-        credit: 85000,
-        currBalance: 135000,
-      },
-      {
-        id: "clean-2",
-        lineNo: 2,
-        date: "2026-07-03",
-        description: "UPI PAYMENT",
-        prevBalance: 135000,
-        debit: 5000,
-        credit: 0,
-        currBalance: 130000,
-      },
-      {
-        id: "clean-3",
-        lineNo: 3,
-        date: "2026-07-06",
-        description: "ATM WITHDRAWAL",
-        prevBalance: 130000,
-        debit: 10000,
-        credit: 0,
-        currBalance: 120000,
-      },
-      {
-        id: "clean-4",
-        lineNo: 4,
-        date: "2026-07-10",
-        description: "INTEREST CREDIT",
-        prevBalance: 120000,
-        debit: 0,
-        credit: 1200,
-        currBalance: 121200,
-      },
-    ];
-
-    setTransactions(clean);
-    setFilter("all");
-    setSearchTerm("");
-    setError("");
-
-    setMessage(
-      "Clean verified demo data loaded."
-    );
-  };
-
-  /* =========================================================
-     TRANSACTION VALIDATION
-  ========================================================= */
-
-  const validateTransaction = (transaction) => {
-    const previous = Number(
-      transaction?.prevBalance || 0
-    );
-
-    const debit = Number(
-      transaction?.debit || 0
-    );
-
-    const credit = Number(
-      transaction?.credit || 0
-    );
-
-    const current = Number(
-      transaction?.currBalance || 0
-    );
-
-    const calculated =
-      previous - debit + credit;
-
-    return (
-      Math.abs(calculated - current) > 0.01
-    );
-  };
-
-  /* =========================================================
-     VALIDATED TRANSACTIONS
-  ========================================================= */
-
-  const validatedTransactions = useMemo(() => {
-    return transactions.map((transaction) => ({
-      ...transaction,
-      flagged:
-        transaction.flagged ||
-        validateTransaction(transaction),
-    }));
-  }, [transactions]);
-
-  /* =========================================================
-     FILTER
-  ========================================================= */
-
-  const filteredTransactions = useMemo(() => {
-    const query = searchTerm
-      .trim()
-      .toLowerCase();
-
-    return validatedTransactions.filter(
-      (transaction) => {
-        const matchesSearch =
-          !query ||
-          String(
-            transaction.description || ""
-          )
-            .toLowerCase()
-            .includes(query) ||
-          String(transaction.date || "")
-            .toLowerCase()
-            .includes(query) ||
-          String(
-            transaction.debit ?? ""
-          ).includes(query) ||
-          String(
-            transaction.credit ?? ""
-          ).includes(query);
-
-        if (!matchesSearch) {
-          return false;
-        }
-
-        if (filter === "flagged") {
-          return transaction.flagged;
-        }
-
-        if (filter === "debits") {
-          return Number(transaction.debit) > 0;
-        }
-
-        if (filter === "credits") {
-          return Number(transaction.credit) > 0;
-        }
-
-        return true;
-      }
-    );
-  }, [
-    validatedTransactions,
-    searchTerm,
-    filter,
-  ]);
-
-  /* =========================================================
-     STATISTICS
-  ========================================================= */
-
-  const totalTransactions =
-    validatedTransactions.length;
-
-  const flaggedTransactions =
-    validatedTransactions.filter(
-      (transaction) =>
-        transaction.flagged
-    ).length;
-
-  const validTransactions =
-    totalTransactions -
-    flaggedTransactions;
-
-  /* =========================================================
-     ADD TRANSACTION
-  ========================================================= */
-
-  const handleAddRow = () => {
-    const newTransaction = {
-      id: `manual-${Date.now()}`,
-      lineNo: transactions.length + 1,
-      date: new Date()
-        .toISOString()
-        .slice(0, 10),
-      description: "Manual transaction",
-      prevBalance: 0,
-      debit: 0,
-      credit: 0,
-      currBalance: 0,
-    };
-
-    setTransactions((current) => [
-      ...current,
-      newTransaction,
-    ]);
-
-    setMessage(
-      "New transaction row added."
-    );
-  };
-
-  /* =========================================================
-     DELETE TRANSACTION
-  ========================================================= */
-
-  const handleDeleteRow = (id) => {
-    setTransactions((current) =>
-      current.filter(
-        (transaction) =>
-          transaction.id !== id
-      )
-    );
-
-    setMessage("Transaction removed.");
-  };
-
-  /* =========================================================
-     UPDATE TRANSACTION
-  ========================================================= */
-
-  const handleTransactionChange = (
-    id,
-    field,
-    value
-  ) => {
-    setTransactions((current) =>
-      current.map((transaction) => {
-        if (transaction.id !== id) {
-          return transaction;
-        }
-
-        const numericFields = [
-          "debit",
-          "credit",
-          "prevBalance",
-          "currBalance",
-        ];
-
-        return {
-          ...transaction,
-          [field]: numericFields.includes(
-            field
-          )
-            ? numberValue(value)
-            : value,
-        };
-      })
-    );
-  };
-
-  /* =========================================================
-     EXPORT
-  ========================================================= */
-
-  const handleExport = async ({
-    spreadsheetId,
-    sheetName,
-  } = {}) => {
-    if (
-      validatedTransactions.length === 0
-    ) {
-      setError(
-        "There are no transactions to export."
-      );
-      return;
-    }
-
-    try {
-      setError("");
-      setMessage("");
-
-      const result =
-        await exportToGoogleSheetsApi(
-          validatedTransactions,
-          spreadsheetId || null,
-          sheetName ||
-            "Bank_Transactions"
-        );
-
-      setMessage(
-        result?.message ||
-          "Transactions exported successfully."
-      );
-
-      setShowExport(false);
-    } catch (err) {
-      console.error(
-        "Export failed:",
-        err
-      );
-
-      setError(
-        err?.message ||
-          "Export failed."
-      );
-
-      throw err;
-    }
-  };
-
-  /* =========================================================
-     LOGIN / REGISTER
-  ========================================================= */
-
+  // If unauthenticated, show the dedicated Role Portal Login screen
   if (!currentUser) {
-    if (authMode === "register") {
-      return (
-        <Register
-          onRegister={handleRegister}
-          onLogin={() =>
-            setAuthMode("login")
-          }
-        />
-      );
-    }
-
     return (
-      <Login
-        onLogin={handleLogin}
-        onRegister={() =>
-          setAuthMode("register")
-        }
-      />
+      <div className="app-wrapper" data-theme={theme}>
+        <Login onLoginSuccess={handleLoginSuccess} />
+      </div>
     );
   }
 
-  /* =========================================================
-     MAIN DASHBOARD
-  ========================================================= */
+  const role = currentUser?.role?.toLowerCase() || '';
+  const isAdmin = role === 'admin' || role === 'super_admin';
 
   return (
-    <div className="min-h-screen bg-slate-50">
-
-      {/* HEADER */}
-
-      <Header
-        currentUser={currentUser}
+    <div className="app-wrapper">
+      {/* Top Corporate Header */}
+      <Header 
+        user={currentUser}
+        onOpenAuth={() => setIsAuthOpen(true)}
         onLogout={handleLogout}
-        backendConnected={
-          backendConnected
-        }
+        theme={theme}
+        onToggleTheme={() => setTheme(prev => prev === 'dark' ? 'light' : 'dark')}
+        activeBank={activeBank}
+        onSelectBank={setActiveBank}
+        customBankName={customBankName}
+        setCustomBankName={setCustomBankName}
+        apiOnline={apiOnline}
       />
 
-      {/* MAIN LAYOUT */}
-
-      <div className="flex min-h-[calc(100vh-102px)]">
-
-        {/* SIDEBAR */}
-
-        <Sidebar
+      {/* Main Body with Sidebar + Tab Content */}
+      <div className="app-body">
+        <Sidebar 
           activeTab={activeTab}
-          setActiveTab={setActiveTab}
-          adminSection={adminSection}
-          setAdminSection={
-            setAdminSection
-          }
-          onOpenAdmin={(section) => {
-            setAdminSection(
-              section || "users"
-            );
-
-            setActiveTab("admin");
+          onSelectTab={(tab) => {
+            // RBAC gating: if user tries to open admin without privileges, keep them on dashboard
+            if (tab === 'admin' && !isAdmin) {
+              alert('Access Denied: Administration hub requires Admin or Super Admin privileges.');
+              return;
+            }
+            setActiveTab(tab);
           }}
+          flagCount={flagCount}
+          collapsed={sidebarCollapsed}
+          onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
+          currentUser={currentUser}
         />
 
-        {/* CONTENT */}
-
-        <main className="min-w-0 flex-1 p-4 md:p-6 lg:p-8">
-
-          {/* ADMIN */}
-
-          {activeTab === "admin" ? (
-            <AdminPanel
+        <main className="main-content">
+          {/* TAB 1: Corporate Overview / Executive Dashboard */}
+          {activeTab === 'dashboard' && (
+            <CorporateOverview 
+              stats={stats}
+              flagCount={flagCount}
+              onNavigateToUpload={() => setActiveTab('extractor')}
+              onNavigateToLedger={() => setActiveTab('verification')}
+              activeBank={activeBank}
+              transactions={transactions}
               currentUser={currentUser}
-              initialSection={
-                adminSection
-              }
+              refreshKey={uploadCount}
             />
-          ) : (
-            <>
-              {/* PAGE HEADER */}
-
-              <section className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-
-                <div>
-                  <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-indigo-600">
-                    Financial Document Processing
-                  </p>
-
-                  <h1 className="mt-2 text-3xl font-black tracking-tight text-slate-900">
-                    Upload Bank Statement
-                  </h1>
-
-                  <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
-                    Upload a bank statement and let the parser extract, validate and structure your transactions.
-                  </p>
-                </div>
-
-                <div className="flex items-center gap-3 rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3">
-
-                  <ShieldCheck
-                    size={20}
-                    className="text-emerald-600"
-                  />
-
-                  <div>
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">
-                      Backend
-                    </p>
-
-                    <p className="text-xs font-semibold text-emerald-800">
-                      {backendConnected
-                        ? "Connected"
-                        : "Disconnected"}
-                    </p>
-                  </div>
-
-                </div>
-
-              </section>
-
-              {/* SUCCESS */}
-
-              {message && (
-                <div className="mb-5 flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-
-                  <CheckCircle2 size={18} />
-
-                  <span>
-                    {message}
-                  </span>
-
-                  <button
-                    type="button"
-                    className="ml-auto"
-                    onClick={() =>
-                      setMessage("")
-                    }
-                  >
-                    <X size={16} />
-                  </button>
-
-                </div>
-              )}
-
-              {/* ERROR */}
-
-              {error && (
-                <div className="mb-5 flex items-center gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-
-                  <AlertTriangle size={18} />
-
-                  <span>
-                    {error}
-                  </span>
-
-                  <button
-                    type="button"
-                    className="ml-auto"
-                    onClick={() =>
-                      setError("")
-                    }
-                  >
-                    <X size={16} />
-                  </button>
-
-                </div>
-              )}
-
-              {/* UPLOAD CARD */}
-
-              <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:p-6">
-
-                <div className="flex flex-col gap-5">
-
-                  <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-
-                    <div>
-                      <h2 className="text-lg font-black text-slate-900">
-                        Bank Statement
-                      </h2>
-
-                      <p className="mt-1 text-xs text-slate-500">
-                        PDF, PNG or JPG up to 5 MB.
-                      </p>
-                    </div>
-
-                    <select
-                      value={selectedBank}
-                      onChange={(event) =>
-                        setSelectedBank(
-                          event.target.value
-                        )
-                      }
-                      className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
-                    >
-                      <option value="HDFC">
-                        HDFC Bank
-                      </option>
-
-                      <option value="SBI">
-                        State Bank of India
-                      </option>
-
-                      <option value="ICICI">
-                        ICICI Bank
-                      </option>
-
-                      <option value="Axis">
-                        Axis Bank
-                      </option>
-                    </select>
-
-                  </div>
-
-                  {/* DROP ZONE */}
-
-                  <div
-                    onDragOver={
-                      handleDragOver
-                    }
-                    onDragLeave={
-                      handleDragLeave
-                    }
-                    onDrop={handleDrop}
-                    className={`rounded-2xl border-2 border-dashed p-8 text-center transition md:p-12 ${
-                      dragActive
-                        ? "border-indigo-500 bg-indigo-50"
-                        : "border-slate-200 bg-slate-50 hover:border-indigo-300 hover:bg-indigo-50/40"
-                    }`}
-                  >
-
-                    <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-indigo-100 text-indigo-600">
-                      <Upload size={25} />
-                    </div>
-
-                    <h3 className="mt-4 text-base font-black text-slate-800">
-                      Drop your bank statement here
-                    </h3>
-
-                    <p className="mt-1 text-xs text-slate-500">
-                      or select a file from your computer
-                    </p>
-
-                    <label className="mt-5 inline-flex cursor-pointer items-center gap-2 rounded-xl bg-indigo-600 px-5 py-3 text-xs font-bold text-white shadow-sm transition hover:bg-indigo-700">
-
-                      <FileText size={15} />
-
-                      Choose File
-
-                      <input
-                        type="file"
-                        accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg"
-                        onChange={
-                          handleInputChange
-                        }
-                        className="hidden"
-                      />
-
-                    </label>
-
-                    {/* SELECTED FILE */}
-
-                    {file && (
-                      <div className="mx-auto mt-5 flex max-w-md items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3 text-left shadow-sm">
-
-                        <div className="flex min-w-0 items-center gap-3">
-
-                          <FileText
-                            size={18}
-                            className="shrink-0 text-indigo-600"
-                          />
-
-                          <div className="min-w-0">
-
-                            <p className="truncate text-xs font-bold text-slate-800">
-                              {file.name}
-                            </p>
-
-                            <p className="text-[10px] text-slate-400">
-                              {(
-                                file.size /
-                                1024 /
-                                1024
-                              ).toFixed(2)}{" "}
-                              MB
-                            </p>
-
-                          </div>
-
-                        </div>
-
-                        <button
-                          type="button"
-                          onClick={
-                            removeFile
-                          }
-                          className="ml-3 rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-600"
-                        >
-                          <X size={16} />
-                        </button>
-
-                      </div>
-                    )}
-
-                  </div>
-
-                  {/* ACTIONS */}
-
-                  <div className="flex flex-wrap items-center gap-2">
-
-                    <button
-                      type="button"
-                      onClick={
-                        handleUpload
-                      }
-                      disabled={
-                        !file ||
-                        uploading ||
-                        !backendConnected
-                      }
-                      className="flex items-center gap-2 rounded-xl bg-[#11152a] px-5 py-3 text-xs font-bold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-
-                      <Upload size={15} />
-
-                      {uploading
-                        ? "Processing..."
-                        : "Process Statement"}
-
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={
-                        loadDemoData
-                      }
-                      disabled={uploading}
-                      className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs font-bold text-slate-600 transition hover:bg-slate-50 disabled:opacity-50"
-                    >
-                      Load Demo
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={
-                        loadCleanDemoData
-                      }
-                      disabled={uploading}
-                      className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs font-bold text-emerald-700 transition hover:bg-emerald-100 disabled:opacity-50"
-                    >
-                      Clean Demo
-                    </button>
-
-                    {file && (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setShowPdf(true)
-                        }
-                        className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs font-bold text-slate-600 hover:bg-slate-50"
-                      >
-                        <Eye size={15} />
-                        Preview
-                      </button>
-                    )}
-
-                  </div>
-
-                </div>
-
-              </section>
-
-              {/* STATISTICS */}
-
-              <section className="mt-6 grid gap-4 md:grid-cols-3">
-
-                <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                    Total Transactions
-                  </p>
-
-                  <p className="mt-2 text-3xl font-black text-slate-900">
-                    {totalTransactions}
-                  </p>
-                </div>
-
-                <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-5 shadow-sm">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-600">
-                    Valid
-                  </p>
-
-                  <p className="mt-2 text-3xl font-black text-emerald-700">
-                    {validTransactions}
-                  </p>
-                </div>
-
-                <div className="rounded-2xl border border-red-100 bg-red-50 p-5 shadow-sm">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-red-600">
-                    Flagged
-                  </p>
-
-                  <p className="mt-2 text-3xl font-black text-red-700">
-                    {flaggedTransactions}
-                  </p>
-                </div>
-
-              </section>
-
-              {/* TRANSACTIONS */}
-
-              <section className="mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-
-                <div className="border-b border-slate-200 p-5">
-
-                  <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-
-                    <div>
-                      <h2 className="text-lg font-black text-slate-900">
-                        Transactions
-                      </h2>
-
-                      <p className="mt-1 text-xs text-slate-500">
-                        Review, edit and validate extracted transactions.
-                      </p>
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-2">
-
-                      {/* SEARCH */}
-
-                      <div className="relative">
-
-                        <Search
-                          size={15}
-                          className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-                        />
-
-                        <input
-                          type="text"
-                          value={
-                            searchTerm
-                          }
-                          onChange={(event) =>
-                            setSearchTerm(
-                              event.target.value
-                            )
-                          }
-                          placeholder="Search transactions..."
-                          className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-9 pr-3 text-xs outline-none focus:border-indigo-400 focus:bg-white sm:w-[220px]"
-                        />
-
-                      </div>
-
-                      {/* FILTER */}
-
-                      <select
-                        value={filter}
-                        onChange={(event) =>
-                          setFilter(
-                            event.target.value
-                          )
-                        }
-                        className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-semibold outline-none focus:border-indigo-400"
-                      >
-                        <option value="all">
-                          All
-                        </option>
-
-                        <option value="flagged">
-                          Flagged
-                        </option>
-
-                        <option value="debits">
-                          Debits
-                        </option>
-
-                        <option value="credits">
-                          Credits
-                        </option>
-                      </select>
-
-                      {/* ADD ROW */}
-
-                      <button
-                        type="button"
-                        onClick={
-                          handleAddRow
-                        }
-                        className="flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-indigo-700"
-                      >
-                        <Plus size={15} />
-                        Add Row
-                      </button>
-
-                      {/* EXPORT */}
-
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setShowExport(
-                            true
-                          )
-                        }
-                        disabled={
-                          validatedTransactions.length ===
-                          0
-                        }
-                        className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-xs font-bold text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        <Download size={15} />
-                        Export
-                      </button>
-
-                    </div>
-
-                  </div>
-
-                </div>
-
-                <TransactionGrid
-                  transactions={
-                    filteredTransactions
-                  }
-                  onChange={
-                    handleTransactionChange
-                  }
-                  onDelete={
-                    handleDeleteRow
-                  }
-                />
-
-              </section>
-            </>
           )}
 
+          {/* TAB 2: Statement Ingestion */}
+          {activeTab === 'extractor' && (
+            <FileUpload 
+              onUploadSuccess={handleUploadSuccess}
+              activeBank={activeBank}
+              onSelectBank={setActiveBank}
+              customBankName={customBankName}
+              setCustomBankName={setCustomBankName}
+              onRequireAuth={() => setIsAuthOpen(true)}
+            />
+          )}
+
+          {/* TAB 3: Split-Screen Verification Ledger (SRS FR-4.1) */}
+          {activeTab === 'verification' && (
+            <div className="verification-wrapper animate-fade">
+              {/* Mathematical Consistency Banner */}
+              <ValidationCard 
+                stats={stats}
+                flagCount={flagCount}
+                totalRows={transactions.length}
+              />
+
+              {/* Split-Screen: PDF Document on Left, Interactive Table on Right */}
+              <div className="split-workspace">
+                <div className="workspace-left">
+                  <DocumentViewer 
+                    file={uploadedFile}
+                    originalPdfUrl={s3DownloadUrl}
+                  />
+                </div>
+
+                <div className="workspace-right">
+                  <TransactionGrid 
+                    transactions={auditedTransactions}
+                    onUpdateTransactions={setTransactions}
+                    onOpenExport={() => setActiveTab('reports')}
+                    flagCount={flagCount}
+                    recordId={activeRecordId}
+                    isInitiallyLocked={isRecordLocked}
+                    onLocked={() => setIsRecordLocked(true)}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 4: Statement History */}
+          {activeTab === 'history' && (
+            <StatementHistory currentUser={currentUser} />
+          )}
+
+          {/* TAB 5: Reports Page */}
+          {activeTab === 'reports' && (
+            <ReportsPage 
+              transactions={transactions}
+              s3FileUrl={s3DownloadUrl}
+              flagCount={flagCount}
+              statsTotalCredits={stats?.totalCredit}
+              statsTotalDebits={stats?.totalDebit}
+            />
+          )}
+
+          {/* TAB 6: Administration Hub (Admin & Super Admin Only) */}
+          {activeTab === 'admin' && isAdmin && (
+            <AdminPanel currentUser={currentUser} />
+          )}
         </main>
       </div>
-
-      {/* PDF VIEWER */}
-
-      {showPdf && file && (
-        <DocumentViewer
-          file={file}
-          previewUrl={previewUrl}
-          onClose={() =>
-            setShowPdf(false)
-          }
-        />
-      )}
-
-      {/* GOOGLE SHEETS MODAL */}
-
-      {showExport && (
-        <GoogleSheetsModal
-          transactions={
-            validatedTransactions
-          }
-          onClose={() =>
-            setShowExport(false)
-          }
-          onExport={handleExport}
-        />
-      )}
     </div>
   );
 }

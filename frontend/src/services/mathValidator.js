@@ -1,65 +1,82 @@
-import { parseRupeeNumber } from '../utils/currencyFormatter';
+import { parseAmount } from '../utils/currencyFormatter.js';
 
 /**
- * Validates a single transaction row.
- * Mathematical Check: Previous Balance - Debit + Credit = Current Balance
+ * Mathematical Validation Engine (SRS FR-4.2, FR-4.3)
+ * Formula: Current Balance = Previous Balance + Credit - Debit
+ *
+ * @param {Array} transactions - Array of transaction objects
+ * @returns {Object} { auditedTransactions, stats, hasFlags, flagCount }
  */
-export const validateTransactionRow = (row) => {
-  const prevBal = parseRupeeNumber(row.prevBalance);
-  const debit = parseRupeeNumber(row.debit);
-  const credit = parseRupeeNumber(row.credit);
-  const currBal = parseRupeeNumber(row.currBalance);
+export const auditTransactions = (transactions) => {
+  if (!Array.isArray(transactions) || transactions.length === 0) {
+    return {
+      auditedTransactions: [],
+      stats: { totalDebit: 0, totalCredit: 0, initialBalance: 0, finalBalance: 0 },
+      hasFlags: false,
+      flagCount: 0
+    };
+  }
 
-  // Expected Balance = Prev Balance - Debit + Credit
-  const expectedCurrBal = prevBal - debit + credit;
-  const difference = Math.abs(currBal - expectedCurrBal);
-
-  const isValid = difference < 0.01; // floating point tolerance
-
-  return {
-    isValid,
-    expectedCurrBal,
-    difference,
-    errorField: isValid ? null : 'currBalance',
-    errorMessage: isValid
-      ? null
-      : `Math discrepancy: Expected ₹${expectedCurrBal.toLocaleString('en-IN', { minimumFractionDigits: 2 })} but found ₹${currBal.toLocaleString('en-IN', { minimumFractionDigits: 2 })} (Diff: ₹${difference.toLocaleString('en-IN', { minimumFractionDigits: 2 })})`
-  };
-};
-
-/**
- * Validates an array of transaction rows and checks sequential integrity
- */
-export const validateAllTransactions = (transactions) => {
-  let hasErrors = false;
-  let totalErrors = 0;
   let totalDebit = 0;
   let totalCredit = 0;
+  let flagCount = 0;
 
-  const validatedRows = transactions.map((row, index) => {
-    const rowValidation = validateTransactionRow(row);
-    
-    // Calculate total debits & credits
-    totalDebit += parseRupeeNumber(row.debit);
-    totalCredit += parseRupeeNumber(row.credit);
+  const auditedTransactions = transactions.map((row, index) => {
+    const debit = parseAmount(row.Debit || row.debit);
+    const credit = parseAmount(row.Credit || row.credit);
+    const reportedBalance = parseAmount(row.Balance || row.balance || row.currBalance);
 
-    if (!rowValidation.isValid) {
-      hasErrors = true;
-      totalErrors++;
+    totalDebit += debit;
+    totalCredit += credit;
+
+    let isFlagged = false;
+    let expectedBalance = reportedBalance;
+    let diff = 0;
+
+    // We can mathematically verify starting from row 1 using the previous row's balance
+    if (index === 0) {
+      if (debit > 0 && credit > 0) {
+        isFlagged = true;
+        flagCount++;
+        diff = Math.abs(debit + credit);
+      }
+    } else if (index > 0) {
+      const prevRow = transactions[index - 1];
+      const prevBalance = parseAmount(prevRow.Balance || prevRow.balance || prevRow.currBalance);
+      
+      expectedBalance = prevBalance + credit - debit;
+      diff = Math.abs(reportedBalance - expectedBalance);
+
+      // Tolerate rounding difference under 0.05
+      if (diff > 0.05 && reportedBalance !== 0) {
+        isFlagged = true;
+        flagCount++;
+      }
     }
 
     return {
       ...row,
-      validation: rowValidation,
+      _id: row._id || `tx_${index}_${Math.random().toString(36).slice(2, 9)}`,
+      _index: index,
+      _isFlagged: isFlagged,
+      _expectedBalance: expectedBalance,
+      _diff: diff
     };
   });
 
+  const initialBalance = parseAmount(transactions[0]?.Balance || transactions[0]?.balance || 0);
+  const finalBalance = parseAmount(transactions[transactions.length - 1]?.Balance || transactions[transactions.length - 1]?.balance || 0);
+
   return {
-    validatedRows,
-    hasErrors,
-    totalErrors,
-    totalDebit,
-    totalCredit,
-    isFullyVerified: totalErrors === 0 && transactions.length > 0
+    auditedTransactions,
+    stats: {
+      totalDebit,
+      totalCredit,
+      initialBalance,
+      finalBalance,
+      rowCount: transactions.length
+    },
+    hasFlags: flagCount > 0,
+    flagCount
   };
 };

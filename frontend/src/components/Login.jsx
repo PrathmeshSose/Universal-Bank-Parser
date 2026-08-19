@@ -1,102 +1,207 @@
-import React, { useState } from "react";
+import React, { useState } from 'react';
+import { 
+  Building2, 
+  ShieldCheck, 
+  Crown, 
+  User, 
+  Lock, 
+  Mail, 
+  ArrowRight, 
+  AlertCircle, 
+  Loader2,
+  CheckCircle2,
+  Sparkles
+} from 'lucide-react';
+import { loginApi, registerApi } from '../services/api.js';
 
-export default function Login({ onLogin, onRegister }) {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
+export const Login = ({ onLoginSuccess }) => {
+  const [selectedPortal, setSelectedPortal] = useState('super_admin'); // 'user', 'admin', 'super_admin'
+  const [isRegister, setIsRegister] = useState(false);
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('admin@universalparser.com');
+  const [password, setPassword] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
 
-  const handleSubmit = async (event) => {
-    event.preventDefault();
-    setError("");
-
-    if (!email.trim() || !password.trim()) {
-      setError("Please enter your email and password.");
-      return;
+  const handleSelectPortal = (portal) => {
+    setSelectedPortal(portal);
+    setErrorMsg('');
+    if (portal === 'super_admin') {
+      setEmail('admin@universalparser.com');
+      setPassword('');
+    } else if (portal === 'admin') {
+      setEmail('analyst.lead@sbi.co.in');
+      setPassword('');
+    } else {
+      setEmail('officer@sbi.co.in');
+      setPassword('');
     }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setErrorMsg('');
+    setSuccessMsg('');
+    setIsLoading(true);
 
     try {
-      await onLogin({
-        email: email.trim(),
-        password,
-      });
+      if (isRegister) {
+        const result = await registerApi(name, email, password);
+        setSuccessMsg('Account registered and authenticated successfully!');
+        setTimeout(() => {
+          onLoginSuccess(result.user);
+        }, 500);
+      } else {
+        const result = await loginApi(email, password);
+        onLoginSuccess(result.user);
+      }
     } catch (err) {
-      setError(err?.message || "Login failed. Please try again.");
+      setErrorMsg(err.message || 'Authentication failed. Please verify your credentials.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 flex items-center justify-center px-4">
-      <div className="w-full max-w-md">
-        <div className="rounded-3xl border border-slate-800 bg-white p-8 shadow-2xl">
-          <div className="mb-8 text-center">
-            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-indigo-600 text-2xl shadow-lg">
-              🏦
-            </div>
-
-            <h1 className="text-2xl font-black tracking-tight text-slate-900">
-              Universal Bank Parser
-            </h1>
-
-            <p className="mt-2 text-sm text-slate-500">
-              Sign in to your workspace
-            </p>
+    <div className="login-screen-container">
+      <div className="login-box glass-card animate-fade">
+        {/* Brand Header */}
+        <div className="login-brand-header">
+          <div className="login-brand-icon">
+            <Building2 size={28} className="text-cyan" />
           </div>
+          <h2>Universal Bank Parser</h2>
+          <p className="login-brand-tagline">Enterprise Financial Intelligence Workspace</p>
+        </div>
 
-          {error && (
-            <div className="mb-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-              {error}
+        {/* Role Portal Selection UI - Hidden during registration */}
+        {!isRegister && (
+          <div className="role-portal-picker">
+            <button 
+              type="button" 
+              className={`portal-tab ${selectedPortal === 'user' ? 'active' : ''}`}
+              onClick={() => handleSelectPortal('user')}
+            >
+              <User size={15} />
+              <span>👤 User Portal</span>
+            </button>
+            <button 
+              type="button" 
+              className={`portal-tab ${selectedPortal === 'admin' ? 'active' : ''}`}
+              onClick={() => handleSelectPortal('admin')}
+            >
+              <ShieldCheck size={15} />
+              <span>🛡️ Admin</span>
+            </button>
+            <button 
+              type="button" 
+              className={`portal-tab portal-super ${selectedPortal === 'super_admin' ? 'active' : ''}`}
+              onClick={() => handleSelectPortal('super_admin')}
+            >
+              <Crown size={15} />
+              <span>👑 Super Admin</span>
+            </button>
+          </div>
+        )}
+
+        {/* Form */}
+        <form onSubmit={handleSubmit} className="login-form">
+          {errorMsg && (
+            <div className="alert-box alert-danger">
+              <AlertCircle size={16} />
+              <span>{errorMsg}</span>
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-5">
-            <div>
-              <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-600">
-                Email
-              </label>
+          {successMsg && (
+            <div className="alert-box alert-success">
+              <CheckCircle2 size={16} />
+              <span>{successMsg}</span>
+            </div>
+          )}
 
-              <input
-                type="email"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
+          {isRegister && (
+            <div className="form-group">
+              <label>Full Name / Title</label>
+              <div className="input-icon-wrap">
+                <User size={16} className="input-icon" />
+                <input 
+                  type="text" 
+                  required 
+                  placeholder="e.g. Prathmesh Sose"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className="form-input"
+                />
+              </div>
+            </div>
+          )}
+
+          <div className="form-group">
+            <label>Work Email Address</label>
+            <div className="input-icon-wrap">
+              <Mail size={16} className="input-icon" />
+              <input 
+                type="email" 
+                required 
                 placeholder="you@example.com"
-                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-100"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="form-input"
               />
             </div>
+          </div>
 
-            <div>
-              <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-600">
-                Password
-              </label>
-
-              <input
-                type="password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
+          <div className="form-group">
+            <label>Password</label>
+            <div className="input-icon-wrap">
+              <Lock size={16} className="input-icon" />
+              <input 
+                type="password" 
+                required 
                 placeholder="••••••••"
-                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-100"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="form-input"
               />
             </div>
+          </div>
 
-            <button
-              type="submit"
-              className="w-full rounded-xl bg-[#11152a] px-5 py-3.5 text-sm font-bold text-white transition hover:bg-indigo-700"
-            >
-              Sign In
-            </button>
-          </form>
+          <button 
+            type="submit" 
+            className="btn btn-primary btn-block btn-lg submit-login-btn"
+            disabled={isLoading}
+          >
+            {isLoading ? <Loader2 size={18} className="animate-spin" /> : <ArrowRight size={18} />}
+            <span>{isRegister ? 'CREATE ACCOUNT & ENTER' : 'SIGN IN TO WORKSPACE'}</span>
+          </button>
 
-          <div className="mt-7 text-center text-sm text-slate-500">
-            Don't have an account?{" "}
-            <button
-              type="button"
-              onClick={onRegister}
-              className="font-bold text-indigo-600 hover:text-indigo-700"
+          {/* Persona Helper Note */}
+          <div className="portal-hint-badge">
+            <Sparkles size={13} className="text-gold" />
+            <span>
+              Target Persona: <strong>{selectedPortal.replace('_', ' ').toUpperCase()}</strong>
+            </span>
+          </div>
+
+          <div className="login-footer-links">
+            <button 
+              type="button" 
+              className="text-link"
+              onClick={() => {
+                setIsRegister(!isRegister);
+                setErrorMsg('');
+                setSuccessMsg('');
+              }}
             >
-              Create account
+              {isRegister 
+                ? '← Back to Sign In' 
+                : 'Need a new corporate account? Register here'}
             </button>
           </div>
-        </div>
+        </form>
       </div>
     </div>
   );
-}
+};

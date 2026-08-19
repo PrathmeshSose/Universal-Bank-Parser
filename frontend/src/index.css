@@ -1,45 +1,268 @@
-@import "tailwindcss";
+/* =========================================================
+   SBI YONO ENTERPRISE BANKING DESIGN SYSTEM
+   Theme Tokens, Typography, and Glassmorphic Base
+========================================================= */
 
 :root {
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
-    "Segoe UI", sans-serif;
-  color: #0f172a;
-  background: #f1f5f9;
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  /* SBI YONO Brand Palette */
+  --sbi-navy-950: #020b18;
+  --sbi-navy-900: #051329;
+  --sbi-navy-800: #0a1f3d;
+  --sbi-navy-700: #0f2c56;
+  --sbi-navy-600: #1a3d6f;
+  
+  --sbi-blue-500: #0052cc;
+  --sbi-blue-400: #1890ff;
+  --sbi-blue-300: #40a9ff;
+  --sbi-cyan-400: #00b4d8;
+  --sbi-cyan-300: #48cae4;
+  --sbi-cyan-glow: rgba(0, 180, 216, 0.25);
+  
+  --sbi-gold-500: #f59e0b;
+  --sbi-gold-400: #fbbf24;
+  --sbi-gold-glow: rgba(245, 158, 11, 0.2);
+
+  /* Status Colors */
+  --color-success: #10b981;
+  --color-success-bg: rgba(16, 185, 129, 0.12);
+  --color-danger: #ef4444;
+  --color-danger-bg: rgba(239, 68, 68, 0.12);
+  --color-warning: #f59e0b;
+  --color-warning-bg: rgba(245, 158, 11, 0.12);
+  --color-info: #00b4d8;
+  --color-info-bg: rgba(0, 180, 216, 0.12);
+
+  /* Surface & Glassmorphism (Dark Theme Default) */
+  --bg-primary: #051329;
+  --bg-secondary: #0a1f3d;
+  --bg-tertiary: #0f2c56;
+  --bg-card: rgba(10, 31, 61, 0.75);
+  --bg-card-hover: rgba(15, 44, 86, 0.85);
+  --bg-glass: rgba(10, 31, 61, 0.6);
+  --border-subtle: rgba(64, 169, 255, 0.15);
+  --border-highlight: rgba(0, 180, 216, 0.35);
+
+  /* Text Hierarchy */
+  --text-primary: #ffffff;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  --text-accent: #00b4d8;
+
+  /* Shadows */
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.25);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.45);
+  --shadow-glow: 0 0 24px var(--sbi-cyan-glow);
+
+  /* Typography */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-heading: 'Outfit', var(--font-sans);
+  --font-mono: 'JetBrains Mono', monospace;
+
+  /* Transitions */
+  --transition-fast: 0.15s ease;
+  --transition-normal: 0.25s ease;
+  --transition-smooth: 0.4s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-* {
+/* Light Theme Variable Overrides */
+[data-theme='light'] {
+  --bg-primary: #f0f4f8;
+  --bg-secondary: #ffffff;
+  --bg-tertiary: #e2e8f0;
+  --bg-card: rgba(255, 255, 255, 0.9);
+  --bg-card-hover: #ffffff;
+  --bg-glass: rgba(255, 255, 255, 0.85);
+  --border-subtle: rgba(15, 44, 86, 0.12);
+  --border-highlight: rgba(0, 82, 204, 0.3);
+
+  --text-primary: #0a1f3d;
+  --text-secondary: #475569;
+  --text-muted: #94a3b8;
+  --text-accent: #0052cc;
+
+  /* Theme Contrast Overrides for Light Mode */
+  --sbi-cyan-400: #0077b6;
+  --sbi-cyan-300: #0096c7;
+  --sbi-gold-400: #d97706;
+  --sbi-gold-500: #b45309;
+
+  --shadow-sm: 0 2px 6px rgba(10, 31, 61, 0.06);
+  --shadow-md: 0 4px 14px rgba(10, 31, 61, 0.08);
+  --shadow-lg: 0 10px 28px rgba(10, 31, 61, 0.12);
+  --shadow-glow: 0 0 20px rgba(0, 82, 204, 0.15);
+}
+
+/* Base Resets */
+*, *::before, *::after {
   box-sizing: border-box;
-}
-
-html,
-body,
-#root {
   margin: 0;
-  min-width: 320px;
-  min-height: 100vh;
-  width: 100%;
+  padding: 0;
 }
 
 body {
-  margin: 0;
-  background: #f1f5f9;
+  font-family: var(--font-sans);
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  min-height: 100vh;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+  background-image: 
+    radial-gradient(circle at 10% 20%, rgba(0, 82, 204, 0.08) 0%, transparent 40%),
+    radial-gradient(circle at 90% 80%, rgba(0, 180, 216, 0.06) 0%, transparent 40%);
+  background-attachment: fixed;
 }
 
-button,
-input,
-select,
-textarea {
-  font: inherit;
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
 }
 
-button {
+::-webkit-scrollbar-track {
+  background: var(--bg-primary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--bg-tertiary);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--sbi-blue-500);
+}
+
+/* Glassmorphism card utilities */
+.glass-card {
+  background: var(--bg-card);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  box-shadow: var(--shadow-sm);
+  transition: all var(--transition-normal);
+}
+
+.glass-card:hover {
+  border-color: var(--border-highlight);
+  box-shadow: var(--shadow-md);
+}
+
+/* Headings */
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-heading);
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+}
+
+/* Buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 20px;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 600;
+  border-radius: 8px;
+  border: none;
   cursor: pointer;
+  transition: all var(--transition-fast);
+  text-decoration: none;
 }
 
-button:disabled {
-  cursor: not-allowed;
+.btn-primary {
+  background: linear-gradient(135deg, var(--sbi-blue-500), #003d99);
+  color: #ffffff;
+  box-shadow: 0 4px 12px rgba(0, 82, 204, 0.35);
 }
+
+.btn-primary:hover {
+  background: linear-gradient(135deg, #0066ff, var(--sbi-blue-500));
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(0, 82, 204, 0.45);
+}
+
+.btn-secondary {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-subtle);
+}
+
+.btn-secondary:hover {
+  background: var(--bg-card-hover);
+  border-color: var(--border-highlight);
+}
+
+.btn-accent {
+  background: linear-gradient(135deg, var(--sbi-cyan-400), #0077b6);
+  color: #ffffff;
+  box-shadow: 0 4px 12px rgba(0, 180, 216, 0.3);
+}
+
+.btn-accent:hover {
+  background: linear-gradient(135deg, var(--sbi-cyan-300), var(--sbi-cyan-400));
+  box-shadow: 0 6px 18px rgba(0, 180, 216, 0.4);
+}
+
+.btn-success {
+  background: var(--color-success);
+  color: #ffffff;
+}
+
+.btn-danger {
+  background: var(--color-danger);
+  color: #ffffff;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulseGlow {
+  0%, 100% { box-shadow: 0 0 8px var(--sbi-cyan-glow); }
+  50% { box-shadow: 0 0 20px var(--sbi-cyan-glow); }
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.animate-fade {
+  animation: fadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-pulse-glow {
+  animation: pulseGlow 2s infinite ease-in-out;
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+/* =========================================================
+   Utility Classes (Fallback for Tailwind classes used in JSX)
+========================================================= */
+.text-cyan { color: var(--sbi-cyan-400) !important; }
+.text-gold { color: var(--sbi-gold-400) !important; }
+.text-success { color: var(--color-success) !important; }
+.text-danger { color: var(--color-danger) !important; }
+.text-muted { color: var(--text-muted) !important; }
+.font-bold { font-weight: 700 !important; }
+.font-semibold { font-weight: 600 !important; }
+.font-mono { font-family: var(--font-mono) !important; }
+.text-sm { font-size: 14px !important; }
+.text-xs { font-size: 12px !important; }
