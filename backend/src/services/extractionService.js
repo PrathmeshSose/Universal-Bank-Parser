@@ -10,7 +10,6 @@
 
 import { BedrockRuntimeClient, InvokeModelCommand } from "@aws-sdk/client-bedrock-runtime";
 import Groq from 'groq-sdk';
-import pdfParse from 'pdf-parse';
 
 // ─── Clients ─────────────────────────────────────────────────────────────────
 
@@ -27,6 +26,7 @@ const bedrockClient = new BedrockRuntimeClient({
 async function parsePdf(fileBuffer, pdfPassword) {
   let pdfText = '';
   try {
+    const { default: pdfParse } = await import('pdf-parse/lib/pdf-parse.js');
     const pdfConfig = pdfPassword ? { data: fileBuffer, password: pdfPassword } : fileBuffer;
     const pdfData = await pdfParse(pdfConfig);
     pdfText = (pdfData.text || '').trim();

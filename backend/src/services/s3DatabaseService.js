@@ -8,58 +8,7 @@ const s3Client = new S3Client({
   region: process.env.AWS_REGION || "us-east-1"
 });
 
-/**
- * Helper: Converts S3 Stream to String
- */
-const streamToString = (stream) =>
-  new Promise((resolve, reject) => {
-    const chunks = [];
-    stream.on("data", (chunk) => chunks.push(chunk));
-    stream.on("error", reject);
-    stream.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
-  });
-
-/**
- * Reads a JSON array from S3
- */
-export const getJsonFromS3 = async (fileName) => {
-  try {
-    const bucketName = process.env.AWS_S3_BUCKET_NAME;
-    if (!bucketName) return [];
-
-    const command = new GetObjectCommand({
-      Bucket: bucketName,
-      Key: `database/${fileName}`
-    });
-
-    const response = await s3Client.send(command);
-    const bodyContents = await streamToString(response.Body);
-    const parsed = JSON.parse(bodyContents);
-
-    // If your friend created an empty templates.json file (either [] or {}), inject the defaults!
-    if (fileName === 'templates.json') {
-      if (!parsed ||
-        (Array.isArray(parsed) && parsed.length === 0) ||
-        (!Array.isArray(parsed) && Object.keys(parsed).length === 0)) {
-        return DEFAULT_BANK_TEMPLATES;
-      }
-    }
-    return parsed;
-  } catch (error) {
-    // If file doesn't exist, return default templates for templates.json or empty array
-    if (error.name === 'NoSuchKey' || error.Code === 'NoSuchKey') {
-      if (fileName === 'templates.json') {
-        return DEFAULT_BANK_TEMPLATES;
-      }
-      return [];
-    }
-    console.error(`Error reading ${fileName} from S3:`, error);
-    if (fileName === 'templates.json') {
-      return DEFAULT_BANK_TEMPLATES;
-    }
-    return [];
-  }
-};
+// Duplicated functions removed.
 
 const DEFAULT_BANK_TEMPLATES = [
   {
@@ -279,6 +228,76 @@ export const saveJsonToS3 =
         error
       );
 
-      return false;
+      throw error;
     }
   };
+
+/* =========================================================
+   ACID MUTEX — Prevents race conditions on concurrent writes
+   Uses a per-file promise queue so only ONE read-modify-write
+   runs at a time on this server instance.
+========================================================= */
+
+class Mutex {
+  constructor() {
+    this._queue = [];
+    this._locked = false;
+  }
+
+  lock() {
+    return new Promise((resolve) => {
+      if (!this._locked) {
+        this._locked = true;
+        resolve();
+      } else {
+        this._queue.push(resolve);
+      }
+    });
+  }
+
+  unlock() {
+    if (this._queue.length > 0) {
+      const next = this._queue.shift();
+      next();
+    } else {
+      this._locked = false;
+    }
+  }
+}
+
+// One mutex per S3 JSON file — fine-grained locking
+const mutexes = {};
+const getMutex = (fileName) => {
+  if (!mutexes[fileName]) {
+    mutexes[fileName] = new Mutex();
+  }
+  return mutexes[fileName];
+};
+
+/**
+ * ACID-safe atomic read-modify-write for S3 JSON files.
+ *
+ * Usage:
+ *   await updateJsonInS3('users.json', (users) => {
+ *     users.push(newUser);
+ *     return users; // must return updated array
+ *   });
+ *
+ * The callback receives the LATEST data freshly read from S3
+ * and must return the updated array to be persisted.
+ * All concurrent calls for the same file are serialised.
+ */
+export const updateJsonInS3 = async (fileName, updateCallback) => {
+  const mutex = getMutex(fileName);
+  await mutex.lock();
+  try {
+    // Always read fresh from S3 inside the lock
+    const current = await getJsonFromS3(fileName);
+    const updated = await updateCallback(current);
+    await saveJsonToS3(fileName, updated);
+    return updated;
+  } finally {
+    // ALWAYS release the lock, even on error
+    mutex.unlock();
+  }
+};

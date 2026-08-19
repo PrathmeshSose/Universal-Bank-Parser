@@ -1,5 +1,3 @@
 // -------------------------------------------------------------
-// DEPRECATED FILE
-// We have migrated from Google Sheets export to direct CSV download.
-// This file is no longer used and can be safely ignored.
+// DEPRECATED: Google Sheets integration has been replaced by the secure AWS S3 Data Lake (awsS3Service.js) export pipeline.
 // -------------------------------------------------------------

@@ -13,7 +13,7 @@ const seedS3Database = async () => {
     let users = await getJsonFromS3('users.json');
     
     // Check if the super_admin already exists
-    const adminExists = users.find(u => u.email === 'admin@universalparser.com');
+    const adminExists = users.find(u => u.email === 'superadmin@gmail.com');
     
     if (adminExists) {
       console.log('✅ Super Admin account already exists in S3 (users.json).');
@@ -26,7 +26,7 @@ const seedS3Database = async () => {
       const superAdmin = {
         id: `usr_${Date.now()}`,
         name: 'System Admin',
-        email: 'admin@universalparser.com',
+        email: 'superadmin@gmail.com',
         password: hashedPassword,
         role: 'super_admin',
         createdAt: new Date().toISOString()
