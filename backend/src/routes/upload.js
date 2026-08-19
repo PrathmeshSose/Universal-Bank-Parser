@@ -63,47 +63,57 @@ router.post(
         req.file.originalname
       );
 
-    // 3. AI EXTRACTION: Bedrock first, auto-fallback to Groq
-    console.log(`🧠 Step 3: Starting AI Extraction for ${bankName}...`);
-    const extractionResult = await extractBankData(
-      req.file.buffer,
-      req.file.mimetype,
-      template.extractionRules.geminiPrompt,
-      pdfPassword
-    );
+      const bankName = req.body?.bankName || "HDFC";
+      const pdfPassword = req.body?.password || "";
 
-    const extractedJson = extractionResult.transactions || extractionResult;
-    const aiProvider    = extractionResult.provider || "unknown";
+      // 2. TEMPLATE RETRIEVAL: Load extraction rules for the bank
+      console.log(`📋 Step 2: Fetching extraction template for ${bankName}`);
+      const templates = await getJsonFromS3('templates.json');
+      const template = templates.find(t => t.bankName?.toLowerCase() === bankName.toLowerCase()) || templates[0];
+      const extractionPrompt = template?.extractionRules?.geminiPrompt || '';
 
-    // 4. DATA LAKE STORAGE: Convert JSON to CSV and upload to AWS S3 Bucket
-    console.log(`☁️ Step 4: Archiving CSV to AWS S3 Bucket`);
-    const s3Url = await uploadDataToS3(extractedJson, req.user.id, bankName);
+      // 3. AI EXTRACTION: Bedrock first, auto-fallback to Groq
+      console.log(`🧠 Step 3: Starting AI Extraction for ${bankName}...`);
+      const extractionResult = await extractBankData(
+        req.file.buffer,
+        req.file.mimetype,
+        extractionPrompt,
+        pdfPassword
+      );
 
-    // 5. RECORD LOGGING: Append record to S3 database log
-    console.log(`🗄️ Step 5: Logging document record in S3`);
-    let records = await getJsonFromS3('records.json');
-    records.push({
-      id: `rec_${Date.now()}`,
-      userId: req.user.id,
-      bankName: bankName,
-      s3FileUrl: s3Url,
-      aiProvider: aiProvider,
-      uploadDate: new Date().toISOString()
-    });
-    await saveJsonToS3('records.json', records);
+      const extractedJson = extractionResult.transactions || extractionResult;
+      const aiProvider    = extractionResult.provider || "unknown";
 
-    // 6. Return response to UI
-    res.json({
-      status: 'success',
-      message: 'Document processed and securely archived in AWS S3.',
-      aiProvider: aiProvider,
-      data: extractedJson,
-      downloadUrl: s3Url
-    });
+      // 4. DATA LAKE STORAGE: Convert JSON to CSV and upload to AWS S3 Bucket
+      console.log(`☁️ Step 4: Archiving CSV to AWS S3 Bucket`);
+      const s3Url = await uploadDataToS3(extractedJson, req.user.id, bankName);
 
-  } catch (error) {
-    console.error('Upload Pipeline Error:', error);
-    res.status(500).json({ status: 'error', message: error.message || 'Internal server error.' });
+      // 5. RECORD LOGGING: Append record to S3 database log
+      console.log(`🗄️ Step 5: Logging document record in S3`);
+      let records = await getJsonFromS3('records.json');
+      records.push({
+        id: `rec_${Date.now()}`,
+        userId: req.user.id,
+        bankName: bankName,
+        s3FileUrl: s3Url,
+        aiProvider: aiProvider,
+        uploadDate: new Date().toISOString()
+      });
+      await saveJsonToS3('records.json', records);
+
+      // 6. Return response to UI
+      res.json({
+        status: 'success',
+        message: 'Document processed and securely archived in AWS S3.',
+        aiProvider: aiProvider,
+        data: extractedJson,
+        downloadUrl: s3Url
+      });
+
+    } catch (error) {
+      console.error('Upload Pipeline Error:', error);
+      res.status(500).json({ status: 'error', message: error.message || 'Internal server error.' });
+    }
   }
 );
 
